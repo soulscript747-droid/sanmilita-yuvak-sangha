@@ -10,7 +10,10 @@ const fs = require('fs');
 
 const app = express();
 
-// Render provides PORT automatically
+// --------------------------------------------------
+// PORT
+// --------------------------------------------------
+
 const PORT = process.env.PORT || 3000;
 
 // --------------------------------------------------
@@ -27,7 +30,11 @@ fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 // DATABASE
 // --------------------------------------------------
 
-const db = new Database(path.join(DATA_DIR, 'site.db'));
+const db = new Database(
+    path.join(DATA_DIR, 'site.db')
+);
+
+db.pragma('journal_mode = WAL');
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS admins(
@@ -95,6 +102,21 @@ CREATE TABLE IF NOT EXISTS memberships(
     status TEXT DEFAULT 'New',
     created_at TEXT
 );
+
+CREATE TABLE IF NOT EXISTS performances(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    description TEXT DEFAULT '',
+    sort_order INTEGER DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS performance_photos(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    performance_id INTEGER NOT NULL,
+    image TEXT NOT NULL,
+    caption TEXT DEFAULT '',
+    sort_order INTEGER DEFAULT 0
+);
 `);
 
 // --------------------------------------------------
@@ -102,22 +124,38 @@ CREATE TABLE IF NOT EXISTS memberships(
 // --------------------------------------------------
 
 const adminEmail =
-    process.env.ADMIN_EMAIL || 'sanmilitayuvaksangha@gmail.com';
+    process.env.ADMIN_EMAIL ||
+    'sanmilitayuvaksangha@gmail.com';
 
 const adminPass =
-    process.env.ADMIN_PASSWORD || 'vauna717171';
+    process.env.ADMIN_PASSWORD ||
+    'vauna717171';
 
 const existingAdmin = db
-    .prepare('SELECT id FROM admins WHERE email = ?')
+    .prepare(`
+        SELECT id
+        FROM admins
+        WHERE email = ?
+    `)
     .get(adminEmail);
 
 if (!existingAdmin && adminPass) {
-    const hash = bcrypt.hashSync(adminPass, 12);
+
+    const hash = bcrypt.hashSync(
+        adminPass,
+        12
+    );
 
     db.prepare(`
-        INSERT INTO admins(email, password_hash)
+        INSERT INTO admins(
+            email,
+            password_hash
+        )
         VALUES(?, ?)
-    `).run(adminEmail, hash);
+    `).run(
+        adminEmail,
+        hash
+    );
 }
 
 // --------------------------------------------------
@@ -125,9 +163,12 @@ if (!existingAdmin && adminPass) {
 // --------------------------------------------------
 
 const defaults = {
-    hero_as: 'সন্মিলিত যুৱক সংঘ, তেজপুৰ',
 
-    hero_en: 'Sanmilita Yuvak Sangha, Tezpur',
+    hero_as:
+        'সন্মিলিত যুৱক সংঘ, তেজপুৰ',
+
+    hero_en:
+        'Sanmilita Yuvak Sangha, Tezpur',
 
     hero_sub:
         'দুজনা গুৰুৰ সৃষ্টি জীয়াই ৰখা আমাৰ এটি প্ৰচেষ্টা। ২০২৩ চনৰ পৰা আজিলৈকে এই সংকল্পক হৃদয়ত ধাৰণ কৰি আমি একেলগে আগবাঢ়ি আহিছোঁ।',
@@ -166,22 +207,37 @@ const defaults = {
         '919394908170'
 };
 
-for (const [key, value] of Object.entries(defaults)) {
+for (
+    const [key, value]
+    of Object.entries(defaults)
+) {
+
     db.prepare(`
-        INSERT OR IGNORE INTO content(key, value)
+        INSERT OR IGNORE INTO content(
+            key,
+            value
+        )
         VALUES(?, ?)
-    `).run(key, value);
+    `).run(
+        key,
+        value
+    );
 }
 
 // --------------------------------------------------
-// EXPRESS CONFIGURATION
+// EXPRESS
 // --------------------------------------------------
 
-app.use(express.json({ limit: '2mb' }));
+app.use(
+    express.json({
+        limit: '10mb'
+    })
+);
 
 app.use(
     express.urlencoded({
-        extended: true
+        extended: true,
+        limit: '10mb'
     })
 );
 
@@ -191,6 +247,7 @@ app.use(
 
 app.use(
     session({
+
         secret:
             process.env.SESSION_SECRET ||
             'CHANGE_THIS_SECRET',
@@ -200,10 +257,15 @@ app.use(
         saveUninitialized: false,
 
         cookie: {
+
             httpOnly: true,
+
             sameSite: 'lax',
+
             secure: false,
-            maxAge: 8 * 60 * 60 * 1000
+
+            maxAge:
+                8 * 60 * 60 * 1000
         }
     })
 );
@@ -212,270 +274,981 @@ app.use(
 // STATIC FILES
 // --------------------------------------------------
 
-// Your index.html, styles.css, app.js,
-// hero.jpg and logo.jpg are in the repository root.
-
 app.use(
-    express.static(__dirname, {
-        index: false
-    })
+    express.static(
+        __dirname,
+        {
+            index: false
+        }
+    )
 );
 
-// Uploaded images
 app.use(
     '/uploads',
     express.static(UPLOAD_DIR)
 );
 
 // --------------------------------------------------
-// HOME PAGE
+// PAGES
 // --------------------------------------------------
 
 app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'index.html'));
+
+    res.sendFile(
+        path.join(
+            __dirname,
+            'index.html'
+        )
+    );
 });
 
-// Admin page
 app.get('/admin', (req, res) => {
-    res.sendFile(path.join(__dirname, 'admin.html'));
+
+    res.sendFile(
+        path.join(
+            __dirname,
+            'admin.html'
+        )
+    );
 });
 
 // --------------------------------------------------
-// AUTHENTICATION MIDDLEWARE
+// AUTHENTICATION
 // --------------------------------------------------
 
 function auth(req, res, next) {
+
     if (req.session.admin) {
         return next();
     }
 
-    res.status(401).json({
+    return res.status(401).json({
         error: 'Unauthorized'
     });
 }
 
 // --------------------------------------------------
-// FILE UPLOAD
+// IMAGE UPLOAD
 // --------------------------------------------------
 
 const upload = multer({
-    dest: UPLOAD_DIR
+
+    storage: multer.diskStorage({
+
+        destination: (
+            req,
+            file,
+            cb
+        ) => {
+
+            cb(
+                null,
+                UPLOAD_DIR
+            );
+        },
+
+        filename: (
+            req,
+            file,
+            cb
+        ) => {
+
+            const extension =
+                path
+                    .extname(
+                        file.originalname
+                    )
+                    .toLowerCase();
+
+            const allowedExtensions = [
+                '.jpg',
+                '.jpeg',
+                '.png',
+                '.webp',
+                '.gif'
+            ];
+
+            if (
+                !allowedExtensions
+                    .includes(extension)
+            ) {
+
+                return cb(
+                    new Error(
+                        'Only image files are allowed'
+                    )
+                );
+            }
+
+            const uniqueName =
+                Date.now() +
+                '-' +
+                Math.random()
+                    .toString(36)
+                    .substring(2, 10) +
+                extension;
+
+            cb(
+                null,
+                uniqueName
+            );
+        }
+    }),
+
+    limits: {
+        fileSize:
+            10 * 1024 * 1024
+    },
+
+    fileFilter: (
+        req,
+        file,
+        cb
+    ) => {
+
+        if (
+            file.mimetype &&
+            file.mimetype.startsWith(
+                'image/'
+            )
+        ) {
+
+            cb(null, true);
+
+        } else {
+
+            cb(
+                new Error(
+                    'Only image files are allowed'
+                )
+            );
+        }
+    }
 });
 
 // --------------------------------------------------
-// PUBLIC API
+// PUBLIC CONTENT API
 // --------------------------------------------------
 
-app.get('/api/content', (req, res) => {
-    const rows = db
-        .prepare('SELECT key, value FROM content')
-        .all();
+app.get(
+    '/api/content',
+    (req, res) => {
 
-    res.json(
-        Object.fromEntries(
-            rows.map(row => [row.key, row.value])
-        )
-    );
-});
+        const rows = db
+            .prepare(`
+                SELECT key, value
+                FROM content
+            `)
+            .all();
 
-app.post('/api/membership', (req, res) => {
-    const r = req.body;
+        res.json(
+            Object.fromEntries(
+                rows.map(
+                    row => [
+                        row.key,
+                        row.value
+                    ]
+                )
+            )
+        );
+    }
+);
 
-    db.prepare(`
-        INSERT INTO memberships(
-            full_name,
-            age,
-            phone,
-            email,
-            address,
-            interest,
-            skills,
-            why,
-            created_at
-        )
-        VALUES(
-            ?, ?, ?, ?, ?, ?, ?, ?,
-            datetime('now')
-        )
-    `).run(
-        r.full_name || '',
-        r.age || '',
-        r.phone || '',
-        r.email || '',
-        r.address || '',
-        r.interest || '',
-        r.skills || '',
-        r.why || ''
-    );
+// --------------------------------------------------
+// MEMBERSHIP
+// --------------------------------------------------
 
-    res.json({
-        ok: true
-    });
-});
+app.post(
+    '/api/membership',
+    (req, res) => {
 
-app.get('/api/events', (req, res) => {
-    const events = db
-        .prepare(`
-            SELECT *
-            FROM events
-            ORDER BY date
-        `)
-        .all();
+        const r = req.body;
 
-    res.json(events);
-});
+        db.prepare(`
+            INSERT INTO memberships(
+                full_name,
+                age,
+                phone,
+                email,
+                address,
+                interest,
+                skills,
+                why,
+                created_at
+            )
+            VALUES(
+                ?, ?, ?, ?, ?,
+                ?, ?, ?,
+                datetime('now')
+            )
+        `).run(
 
-app.get('/api/gallery', (req, res) => {
-    const gallery = db
-        .prepare(`
-            SELECT *
-            FROM gallery
-            ORDER BY id DESC
-        `)
-        .all();
+            r.full_name || '',
+            r.age || '',
+            r.phone || '',
+            r.email || '',
+            r.address || '',
+            r.interest || '',
+            r.skills || '',
+            r.why || ''
+        );
 
-    res.json(gallery);
-});
+        res.json({
+            ok: true
+        });
+    }
+);
 
-app.get('/api/team', (req, res) => {
-    const team = db
-        .prepare(`
-            SELECT *
-            FROM team
-            ORDER BY id
-        `)
-        .all();
+// --------------------------------------------------
+// EVENTS
+// --------------------------------------------------
 
-    res.json(team);
-});
+app.get(
+    '/api/events',
+    (req, res) => {
 
-app.get('/api/news', (req, res) => {
-    const news = db
-        .prepare(`
-            SELECT *
-            FROM news
-            WHERE published = 1
-            ORDER BY date DESC
-        `)
-        .all();
+        const events = db
+            .prepare(`
+                SELECT *
+                FROM events
+                ORDER BY date
+            `)
+            .all();
 
-    res.json(news);
-});
+        res.json(events);
+    }
+);
+
+// --------------------------------------------------
+// GALLERY
+// --------------------------------------------------
+
+app.get(
+    '/api/gallery',
+    (req, res) => {
+
+        const gallery = db
+            .prepare(`
+                SELECT *
+                FROM gallery
+                ORDER BY id DESC
+            `)
+            .all();
+
+        res.json(gallery);
+    }
+);
+
+// --------------------------------------------------
+// TEAM
+// --------------------------------------------------
+
+app.get(
+    '/api/team',
+    (req, res) => {
+
+        const team = db
+            .prepare(`
+                SELECT *
+                FROM team
+                ORDER BY id
+            `)
+            .all();
+
+        res.json(team);
+    }
+);
+
+// --------------------------------------------------
+// NEWS
+// --------------------------------------------------
+
+app.get(
+    '/api/news',
+    (req, res) => {
+
+        const news = db
+            .prepare(`
+                SELECT *
+                FROM news
+                WHERE published = 1
+                ORDER BY date DESC
+            `)
+            .all();
+
+        res.json(news);
+    }
+);
+
+// --------------------------------------------------
+// FEATURED PERFORMANCES - PUBLIC
+// --------------------------------------------------
+
+app.get(
+    '/api/performances',
+    (req, res) => {
+
+        try {
+
+            const performances =
+                db.prepare(`
+                    SELECT *
+                    FROM performances
+                    ORDER BY
+                        sort_order ASC,
+                        id ASC
+                `).all();
+
+            const photos =
+                db.prepare(`
+                    SELECT *
+                    FROM performance_photos
+                    ORDER BY
+                        sort_order ASC,
+                        id ASC
+                `).all();
+
+            const result =
+                performances.map(
+                    performance => ({
+
+                        ...performance,
+
+                        photos:
+                            photos.filter(
+                                photo =>
+                                    photo.performance_id ===
+                                    performance.id
+                            )
+                    })
+                );
+
+            res.json(result);
+
+        } catch (error) {
+
+            console.error(error);
+
+            res.status(500).json({
+                error:
+                    'Failed to load performances'
+            });
+        }
+    }
+);
 
 // --------------------------------------------------
 // LOGIN
 // --------------------------------------------------
 
-app.post('/api/login', (req, res) => {
-    const email = req.body.email || '';
-    const password = req.body.password || '';
+app.post(
+    '/api/login',
+    (req, res) => {
 
-    const admin = db
-        .prepare(`
-            SELECT *
-            FROM admins
-            WHERE email = ?
-        `)
-        .get(email);
+        const email =
+            req.body.email || '';
 
-    if (
-        admin &&
-        bcrypt.compareSync(
-            password,
-            admin.password_hash
-        )
-    ) {
-        req.session.admin = {
-            id: admin.id,
-            email: admin.email
-        };
+        const password =
+            req.body.password || '';
 
-        return res.json({
-            ok: true
+        const admin =
+            db.prepare(`
+                SELECT *
+                FROM admins
+                WHERE email = ?
+            `).get(email);
+
+        if (
+            admin &&
+            bcrypt.compareSync(
+                password,
+                admin.password_hash
+            )
+        ) {
+
+            req.session.admin = {
+
+                id: admin.id,
+
+                email: admin.email
+            };
+
+            return res.json({
+                ok: true
+            });
+        }
+
+        res.status(401).json({
+            error:
+                'Invalid credentials'
         });
     }
-
-    res.status(401).json({
-        error: 'Invalid credentials'
-    });
-});
+);
 
 // --------------------------------------------------
 // LOGOUT
 // --------------------------------------------------
 
-app.post('/api/logout', (req, res) => {
-    req.session.destroy(() => {
-        res.json({
-            ok: true
-        });
-    });
-});
+app.post(
+    '/api/logout',
+    (req, res) => {
+
+        req.session.destroy(
+            () => {
+
+                res.json({
+                    ok: true
+                });
+            }
+        );
+    }
+);
 
 // --------------------------------------------------
 // CURRENT ADMIN
 // --------------------------------------------------
 
-app.get('/api/me', auth, (req, res) => {
-    res.json(req.session.admin);
-});
+app.get(
+    '/api/me',
+    auth,
+    (req, res) => {
+
+        res.json(
+            req.session.admin
+        );
+    }
+);
 
 // --------------------------------------------------
 // ADMIN DATA
 // --------------------------------------------------
 
-app.get('/api/admin/:type', auth, (req, res) => {
-    const allowed = {
-        events: 'events',
-        gallery: 'gallery',
-        team: 'team',
-        news: 'news',
-        memberships: 'memberships'
-    };
+app.get(
+    '/api/admin/:type',
+    auth,
+    (req, res) => {
 
-    const table = allowed[req.params.type];
+        const allowed = {
 
-    if (!table) {
-        return res.status(400).json({
-            error: 'Invalid type'
-        });
+            events: 'events',
+
+            gallery: 'gallery',
+
+            team: 'team',
+
+            news: 'news',
+
+            memberships:
+                'memberships'
+        };
+
+        const table =
+            allowed[
+                req.params.type
+            ];
+
+        if (!table) {
+
+            return res.status(400).json({
+                error:
+                    'Invalid type'
+            });
+        }
+
+        const rows = db
+            .prepare(`
+                SELECT *
+                FROM ${table}
+                ORDER BY id DESC
+            `)
+            .all();
+
+        res.json(rows);
     }
+);
 
-    const rows = db
-        .prepare(`
-            SELECT *
-            FROM ${table}
-            ORDER BY id DESC
-        `)
-        .all();
+// --------------------------------------------------
+// ADMIN FEATURED PERFORMANCES
+// --------------------------------------------------
 
-    res.json(rows);
-});
+app.get(
+    '/api/admin/performances',
+    auth,
+    (req, res) => {
+
+        try {
+
+            const performances =
+                db.prepare(`
+                    SELECT *
+                    FROM performances
+                    ORDER BY
+                        sort_order ASC,
+                        id ASC
+                `).all();
+
+            const photos =
+                db.prepare(`
+                    SELECT *
+                    FROM performance_photos
+                    ORDER BY
+                        sort_order ASC,
+                        id ASC
+                `).all();
+
+            const result =
+                performances.map(
+                    performance => ({
+
+                        ...performance,
+
+                        photos:
+                            photos.filter(
+                                photo =>
+                                    photo.performance_id ===
+                                    performance.id
+                            )
+                    })
+                );
+
+            res.json(result);
+
+        } catch (error) {
+
+            console.error(error);
+
+            res.status(500).json({
+                error:
+                    'Failed to load performances'
+            });
+        }
+    }
+);
+
+// --------------------------------------------------
+// CREATE PERFORMANCE
+// --------------------------------------------------
+
+app.post(
+    '/api/admin/performances',
+    auth,
+    (req, res) => {
+
+        try {
+
+            const title =
+                (req.body.title || '')
+                    .trim();
+
+            const description =
+                req.body.description || '';
+
+            const sortOrder =
+                Number(
+                    req.body.sort_order
+                ) || 0;
+
+            if (!title) {
+
+                return res.status(400).json({
+                    error:
+                        'Title is required'
+                });
+            }
+
+            const result =
+                db.prepare(`
+                    INSERT INTO performances(
+                        title,
+                        description,
+                        sort_order
+                    )
+                    VALUES(?, ?, ?)
+                `).run(
+                    title,
+                    description,
+                    sortOrder
+                );
+
+            res.json({
+
+                ok: true,
+
+                id:
+                    result.lastInsertRowid
+            });
+
+        } catch (error) {
+
+            console.error(error);
+
+            res.status(500).json({
+                error:
+                    'Failed to create performance'
+            });
+        }
+    }
+);
+
+// --------------------------------------------------
+// UPDATE PERFORMANCE
+// --------------------------------------------------
+
+app.put(
+    '/api/admin/performances/:id',
+    auth,
+    (req, res) => {
+
+        try {
+
+            const title =
+                (req.body.title || '')
+                    .trim();
+
+            const description =
+                req.body.description || '';
+
+            const sortOrder =
+                Number(
+                    req.body.sort_order
+                ) || 0;
+
+            if (!title) {
+
+                return res.status(400).json({
+                    error:
+                        'Title is required'
+                });
+            }
+
+            const result =
+                db.prepare(`
+                    UPDATE performances
+                    SET
+                        title = ?,
+                        description = ?,
+                        sort_order = ?
+                    WHERE id = ?
+                `).run(
+                    title,
+                    description,
+                    sortOrder,
+                    req.params.id
+                );
+
+            if (
+                result.changes === 0
+            ) {
+
+                return res.status(404).json({
+                    error:
+                        'Performance not found'
+                });
+            }
+
+            res.json({
+                ok: true
+            });
+
+        } catch (error) {
+
+            console.error(error);
+
+            res.status(500).json({
+                error:
+                    'Failed to update performance'
+            });
+        }
+    }
+);
+
+// --------------------------------------------------
+// DELETE PERFORMANCE
+// --------------------------------------------------
+
+app.delete(
+    '/api/admin/performances/:id',
+    auth,
+    (req, res) => {
+
+        try {
+
+            const id =
+                req.params.id;
+
+            db.prepare(`
+                DELETE FROM
+                    performance_photos
+                WHERE performance_id = ?
+            `).run(id);
+
+            db.prepare(`
+                DELETE FROM performances
+                WHERE id = ?
+            `).run(id);
+
+            res.json({
+                ok: true
+            });
+
+        } catch (error) {
+
+            console.error(error);
+
+            res.status(500).json({
+                error:
+                    'Failed to delete performance'
+            });
+        }
+    }
+);
+
+// --------------------------------------------------
+// ADD PERFORMANCE PHOTO
+// --------------------------------------------------
+
+app.post(
+    '/api/admin/performances/:id/photos',
+    auth,
+    (req, res) => {
+
+        try {
+
+            const image =
+                req.body.image || '';
+
+            const caption =
+                req.body.caption || '';
+
+            const sortOrder =
+                Number(
+                    req.body.sort_order
+                ) || 0;
+
+            if (!image) {
+
+                return res.status(400).json({
+                    error:
+                        'Image is required'
+                });
+            }
+
+            const performance =
+                db.prepare(`
+                    SELECT id
+                    FROM performances
+                    WHERE id = ?
+                `).get(
+                    req.params.id
+                );
+
+            if (!performance) {
+
+                return res.status(404).json({
+                    error:
+                        'Performance not found'
+                });
+            }
+
+            const result =
+                db.prepare(`
+                    INSERT INTO performance_photos(
+                        performance_id,
+                        image,
+                        caption,
+                        sort_order
+                    )
+                    VALUES(?, ?, ?, ?)
+                `).run(
+                    req.params.id,
+                    image,
+                    caption,
+                    sortOrder
+                );
+
+            res.json({
+
+                ok: true,
+
+                id:
+                    result.lastInsertRowid
+            });
+
+        } catch (error) {
+
+            console.error(error);
+
+            res.status(500).json({
+                error:
+                    'Failed to add photo'
+            });
+        }
+    }
+);
+
+// --------------------------------------------------
+// UPDATE PERFORMANCE PHOTO
+// --------------------------------------------------
+
+app.put(
+    '/api/admin/performance-photos/:id',
+    auth,
+    (req, res) => {
+
+        try {
+
+            const caption =
+                req.body.caption || '';
+
+            const sortOrder =
+                Number(
+                    req.body.sort_order
+                ) || 0;
+
+            const result =
+                db.prepare(`
+                    UPDATE performance_photos
+                    SET
+                        caption = ?,
+                        sort_order = ?
+                    WHERE id = ?
+                `).run(
+                    caption,
+                    sortOrder,
+                    req.params.id
+                );
+
+            if (
+                result.changes === 0
+            ) {
+
+                return res.status(404).json({
+                    error:
+                        'Photo not found'
+                });
+            }
+
+            res.json({
+                ok: true
+            });
+
+        } catch (error) {
+
+            console.error(error);
+
+            res.status(500).json({
+                error:
+                    'Failed to update photo'
+            });
+        }
+    }
+);
+
+// --------------------------------------------------
+// DELETE PERFORMANCE PHOTO
+// --------------------------------------------------
+
+app.delete(
+    '/api/admin/performance-photos/:id',
+    auth,
+    (req, res) => {
+
+        try {
+
+            const result =
+                db.prepare(`
+                    DELETE FROM
+                        performance_photos
+                    WHERE id = ?
+                `).run(
+                    req.params.id
+                );
+
+            if (
+                result.changes === 0
+            ) {
+
+                return res.status(404).json({
+                    error:
+                        'Photo not found'
+                });
+            }
+
+            res.json({
+                ok: true
+            });
+
+        } catch (error) {
+
+            console.error(error);
+
+            res.status(500).json({
+                error:
+                    'Failed to delete photo'
+            });
+        }
+    }
+);
 
 // --------------------------------------------------
 // UPDATE WEBSITE CONTENT
 // --------------------------------------------------
 
-app.put('/api/content', auth, (req, res) => {
-    const statement = db.prepare(`
-        INSERT INTO content(key, value)
-        VALUES(?, ?)
-        ON CONFLICT(key)
-        DO UPDATE SET value = excluded.value
-    `);
+app.put(
+    '/api/content',
+    auth,
+    (req, res) => {
 
-    const transaction = db.transaction(data => {
-        for (const [key, value] of Object.entries(data)) {
-            statement.run(key, String(value));
+        try {
+
+            const statement =
+                db.prepare(`
+                    INSERT INTO content(
+                        key,
+                        value
+                    )
+                    VALUES(?, ?)
+                    ON CONFLICT(key)
+                    DO UPDATE SET
+                        value =
+                            excluded.value
+                `);
+
+            const transaction =
+                db.transaction(data => {
+
+                    for (
+                        const [
+                            key,
+                            value
+                        ]
+                        of Object.entries(data)
+                    ) {
+
+                        statement.run(
+                            key,
+                            String(value)
+                        );
+                    }
+                });
+
+            transaction(req.body);
+
+            res.json({
+                ok: true
+            });
+
+        } catch (error) {
+
+            console.error(error);
+
+            res.status(500).json({
+                error:
+                    'Failed to update content'
+            });
         }
-    });
-
-    transaction(req.body);
-
-    res.json({
-        ok: true
-    });
-});
+    }
+);
 
 // --------------------------------------------------
 // IMAGE UPLOAD
@@ -488,13 +1261,20 @@ app.post(
     (req, res) => {
 
         if (!req.file) {
+
             return res.status(400).json({
-                error: 'No file'
+                error:
+                    'No image uploaded'
             });
         }
 
         res.json({
-            url: '/uploads/' + req.file.filename
+
+            ok: true,
+
+            url:
+                '/uploads/' +
+                req.file.filename
         });
     }
 );
@@ -503,194 +1283,289 @@ app.post(
 // ADD DATA
 // --------------------------------------------------
 
-app.post('/api/:type', auth, (req, res) => {
+app.post(
+    '/api/:type',
+    auth,
+    (req, res) => {
 
-    const maps = {
+        const maps = {
 
-        events: [
-            'name',
-            'date',
-            'time',
-            'venue',
-            'description',
-            'category',
-            'status',
-            'poster'
-        ],
+            events: [
+                'name',
+                'date',
+                'time',
+                'venue',
+                'description',
+                'category',
+                'status',
+                'poster'
+            ],
 
-        gallery: [
-            'album',
-            'caption',
-            'category',
-            'image'
-        ],
+            gallery: [
+                'album',
+                'caption',
+                'category',
+                'image'
+            ],
 
-        team: [
-            'name',
-            'designation',
-            'bio',
-            'photo'
-        ],
+            team: [
+                'name',
+                'designation',
+                'bio',
+                'photo'
+            ],
 
-        news: [
-            'title_as',
-            'title_en',
-            'date',
-            'category',
-            'author',
-            'image',
-            'body_as',
-            'body_en',
-            'published'
-        ]
-    };
+            news: [
+                'title_as',
+                'title_en',
+                'date',
+                'category',
+                'author',
+                'image',
+                'body_as',
+                'body_en',
+                'published'
+            ]
+        };
 
-    const type = req.params.type;
-    const fields = maps[type];
+        const type =
+            req.params.type;
 
-    if (!fields) {
-        return res.status(400).json({
-            error: 'Invalid type'
+        const fields =
+            maps[type];
+
+        if (!fields) {
+
+            return res.status(400).json({
+                error:
+                    'Invalid type'
+            });
+        }
+
+        const placeholders =
+            fields
+                .map(() => '?')
+                .join(',');
+
+        const sql = `
+            INSERT INTO ${type}
+            (${fields.join(',')})
+            VALUES(${placeholders})
+        `;
+
+        const values =
+            fields.map(
+                field =>
+                    req.body[field] ?? ''
+            );
+
+        const result =
+            db
+                .prepare(sql)
+                .run(...values);
+
+        res.json({
+
+            id:
+                result.lastInsertRowid
         });
     }
-
-    const placeholders = fields
-        .map(() => '?')
-        .join(',');
-
-    const sql = `
-        INSERT INTO ${type}
-        (${fields.join(',')})
-        VALUES(${placeholders})
-    `;
-
-    const values = fields.map(
-        field => req.body[field] ?? ''
-    );
-
-    const result = db
-        .prepare(sql)
-        .run(...values);
-
-    res.json({
-        id: result.lastInsertRowid
-    });
-});
+);
 
 // --------------------------------------------------
 // UPDATE DATA
 // --------------------------------------------------
 
-app.put('/api/:type/:id', auth, (req, res) => {
+app.put(
+    '/api/:type/:id',
+    auth,
+    (req, res) => {
 
-    const maps = {
+        const maps = {
 
-        events: [
-            'name',
-            'date',
-            'time',
-            'venue',
-            'description',
-            'category',
-            'status',
-            'poster'
-        ],
+            events: [
+                'name',
+                'date',
+                'time',
+                'venue',
+                'description',
+                'category',
+                'status',
+                'poster'
+            ],
 
-        gallery: [
-            'album',
-            'caption',
-            'category',
-            'image'
-        ],
+            gallery: [
+                'album',
+                'caption',
+                'category',
+                'image'
+            ],
 
-        team: [
-            'name',
-            'designation',
-            'bio',
-            'photo'
-        ],
+            team: [
+                'name',
+                'designation',
+                'bio',
+                'photo'
+            ],
 
-        news: [
-            'title_as',
-            'title_en',
-            'date',
-            'category',
-            'author',
-            'image',
-            'body_as',
-            'body_en',
-            'published'
-        ]
-    };
+            news: [
+                'title_as',
+                'title_en',
+                'date',
+                'category',
+                'author',
+                'image',
+                'body_as',
+                'body_en',
+                'published'
+            ]
+        };
 
-    const type = req.params.type;
-    const fields = maps[type];
+        const type =
+            req.params.type;
 
-    if (!fields) {
-        return res.status(400).json({
-            error: 'Invalid type'
+        const fields =
+            maps[type];
+
+        if (!fields) {
+
+            return res.status(400).json({
+                error:
+                    'Invalid type'
+            });
+        }
+
+        const setters =
+            fields
+                .map(
+                    field =>
+                        `${field} = ?`
+                )
+                .join(',');
+
+        const sql = `
+            UPDATE ${type}
+            SET ${setters}
+            WHERE id = ?
+        `;
+
+        const values =
+            fields.map(
+                field =>
+                    req.body[field] ?? ''
+            );
+
+        values.push(
+            req.params.id
+        );
+
+        db.prepare(sql)
+            .run(...values);
+
+        res.json({
+            ok: true
         });
     }
-
-    const setters = fields
-        .map(field => `${field} = ?`)
-        .join(',');
-
-    const sql = `
-        UPDATE ${type}
-        SET ${setters}
-        WHERE id = ?
-    `;
-
-    const values = fields.map(
-        field => req.body[field] ?? ''
-    );
-
-    values.push(req.params.id);
-
-    db.prepare(sql).run(...values);
-
-    res.json({
-        ok: true
-    });
-});
+);
 
 // --------------------------------------------------
 // DELETE DATA
 // --------------------------------------------------
 
-app.delete('/api/:type/:id', auth, (req, res) => {
+app.delete(
+    '/api/:type/:id',
+    auth,
+    (req, res) => {
 
-    const allowed = [
-        'events',
-        'gallery',
-        'team',
-        'news',
-        'memberships'
-    ];
+        const allowed = [
+            'events',
+            'gallery',
+            'team',
+            'news',
+            'memberships'
+        ];
 
-    if (!allowed.includes(req.params.type)) {
-        return res.status(400).json({
-            error: 'Invalid type'
+        if (
+            !allowed.includes(
+                req.params.type
+            )
+        ) {
+
+            return res.status(400).json({
+                error:
+                    'Invalid type'
+            });
+        }
+
+        db.prepare(`
+            DELETE FROM
+                ${req.params.type}
+            WHERE id = ?
+        `).run(
+            req.params.id
+        );
+
+        res.json({
+            ok: true
         });
     }
+);
 
-    db.prepare(`
-        DELETE FROM ${req.params.type}
-        WHERE id = ?
-    `).run(req.params.id);
+// --------------------------------------------------
+// ERROR HANDLER
+// --------------------------------------------------
 
-    res.json({
-        ok: true
-    });
-});
+app.use(
+    (
+        error,
+        req,
+        res,
+        next
+    ) => {
+
+        console.error(error);
+
+        if (
+            error instanceof
+            multer.MulterError
+        ) {
+
+            return res.status(400).json({
+                error:
+                    error.message
+            });
+        }
+
+        if (
+            error &&
+            error.message ===
+            'Only image files are allowed'
+        ) {
+
+            return res.status(400).json({
+                error:
+                    'Only image files are allowed'
+            });
+        }
+
+        res.status(500).json({
+            error:
+                'Internal server error'
+        });
+    }
+);
 
 // --------------------------------------------------
 // START SERVER
 // --------------------------------------------------
 
-app.listen(PORT, '0.0.0.0', () => {
-    console.log(
-        `Sanmilita Yuvak Sangha server running on port ${PORT}`
-    );
-});
+app.listen(
+    PORT,
+    '0.0.0.0',
+    () => {
+
+        console.log(
+            `Sanmilita Yuvak Sangha server running on port ${PORT}`
+        );
+    }
+);
