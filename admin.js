@@ -55,20 +55,18 @@ const $ = selector =>
 const $$ = selector =>
     [...document.querySelectorAll(selector)];
 
-async function api(
-    url,
-    options = {}
-) {
-    const response =
-        await fetch(url, {
-            credentials: 'same-origin',
-            ...options,
-            headers: {
-                'Content-Type':
-                    'application/json',
-                ...(options.headers || {})
-            }
-        });
+async function api(url, options = {}) {
+
+    const response = await fetch(url, {
+        credentials: 'same-origin',
+        ...options,
+        headers: {
+            ...(options.body
+                ? { 'Content-Type': 'application/json' }
+                : {}),
+            ...(options.headers || {})
+        }
+    });
 
     let data = {};
 
@@ -78,8 +76,7 @@ async function api(
 
     if (!response.ok) {
         throw new Error(
-            data.error ||
-            'Something went wrong'
+            data.error || 'Something went wrong'
         );
     }
 
@@ -87,6 +84,7 @@ async function api(
 }
 
 function escapeHTML(value) {
+
     return String(value ?? '')
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
@@ -95,33 +93,30 @@ function escapeHTML(value) {
         .replace(/'/g, '&#039;');
 }
 
-function showMessage(
-    message,
-    type = 'success'
-) {
-    let box =
-        $('#admin-message');
+function showMessage(message, type = 'success') {
+
+    let box = $('#admin-message');
 
     if (!box) {
+
         box = document.createElement('div');
+
         box.id = 'admin-message';
 
-        Object.assign(
-            box.style,
-            {
-                position: 'fixed',
-                top: '20px',
-                right: '20px',
-                zIndex: '99999',
-                padding: '14px 18px',
-                borderRadius: '10px',
-                background: '#222',
-                color: '#fff',
-                fontSize: '14px',
-                boxShadow:
-                    '0 10px 30px rgba(0,0,0,.2)'
-            }
-        );
+        Object.assign(box.style, {
+            position: 'fixed',
+            top: '20px',
+            right: '20px',
+            left: '20px',
+            zIndex: '99999',
+            padding: '14px 18px',
+            borderRadius: '10px',
+            background: '#222',
+            color: '#fff',
+            fontSize: '14px',
+            boxShadow: '0 10px 30px rgba(0,0,0,.2)',
+            textAlign: 'center'
+        });
 
         document.body.appendChild(box);
     }
@@ -133,14 +128,11 @@ function showMessage(
             ? '#b42318'
             : '#176b3a';
 
-    clearTimeout(
-        box._timer
-    );
+    clearTimeout(box._timer);
 
-    box._timer =
-        setTimeout(() => {
-            box.remove();
-        }, 3000);
+    box._timer = setTimeout(() => {
+        if (box) box.remove();
+    }, 3000);
 }
 
 // ==================================================
@@ -148,14 +140,12 @@ function showMessage(
 // ==================================================
 
 async function checkAuth() {
+
     try {
 
-        const admin =
-            await api('/api/me');
+        const admin = await api('/api/me');
 
-        showAdmin(
-            admin
-        );
+        showAdmin(admin);
 
     } catch (error) {
 
@@ -165,112 +155,85 @@ async function checkAuth() {
 
 function showLogin() {
 
-    const login =
-        $('#login-page');
-
-    const dashboard =
-        $('#admin-app');
+    const login = $('#login-page');
+    const dashboard = $('#admin-app');
 
     if (login) {
-        login.style.display =
-            'flex';
+        login.style.display = 'flex';
     }
 
     if (dashboard) {
-        dashboard.style.display =
-            'none';
+        dashboard.style.display = 'none';
     }
 }
 
 function showAdmin(admin) {
 
-    const login =
-        $('#login-page');
-
-    const dashboard =
-        $('#admin-app');
+    const login = $('#login-page');
+    const dashboard = $('#admin-app');
 
     if (login) {
-        login.style.display =
-            'none';
+        login.style.display = 'none';
     }
 
     if (dashboard) {
-        dashboard.style.display =
-            'block';
+        dashboard.style.display = 'block';
     }
 
-    const email =
-        $('#admin-email-display');
+    const email = $('#admin-email-display');
 
     if (email) {
-        email.textContent =
-            admin.email || '';
+        email.textContent = admin.email || '';
     }
 
     loadDashboard();
 }
 
 // ==================================================
-// LOGIN FORM
+// LOGIN
 // ==================================================
 
-document.addEventListener(
-    'submit',
-    async event => {
+document.addEventListener('submit', async event => {
 
-        if (
-            event.target.id !==
-            'login-form'
-        ) {
-            return;
-        }
-
-        event.preventDefault();
-
-        const form =
-            event.target;
-
-        const email =
-            form.querySelector(
-                '[name="email"]'
-            )?.value || '';
-
-        const password =
-            form.querySelector(
-                '[name="password"]'
-            )?.value || '';
-
-        try {
-
-            const result =
-                await api(
-                    '/api/login',
-                    {
-                        method: 'POST',
-                        body:
-                            JSON.stringify({
-                                email,
-                                password
-                            })
-                    }
-                );
-
-            if (result.ok) {
-                showAdmin({
-                    email
-                });
-            }
-
-        } catch (error) {
-
-            showMessage(
-                error.message,
-                'error'
-            );
-        }
+    if (event.target.id !== 'login-form') {
+        return;
     }
-);
+
+    event.preventDefault();
+
+    const form = event.target;
+
+    const email =
+        form.querySelector('[name="email"]')?.value || '';
+
+    const password =
+        form.querySelector('[name="password"]')?.value || '';
+
+    try {
+
+        const result = await api('/api/login', {
+            method: 'POST',
+            body: JSON.stringify({
+                email,
+                password
+            })
+        });
+
+        if (result.ok) {
+
+            showAdmin({
+                email
+            });
+        }
+
+    } catch (error) {
+
+        showMessage(
+            error.message,
+            'error'
+        );
+    }
+});
 
 // ==================================================
 // LOGOUT
@@ -280,12 +243,9 @@ async function logout() {
 
     try {
 
-        await api(
-            '/api/logout',
-            {
-                method: 'POST'
-            }
-        );
+        await api('/api/logout', {
+            method: 'POST'
+        });
 
         location.reload();
 
@@ -298,67 +258,50 @@ async function logout() {
     }
 }
 
-document.addEventListener(
-    'click',
-    event => {
+document.addEventListener('click', event => {
 
-        if (
-            event.target.closest(
-                '[data-action="logout"]'
-            )
-        ) {
-            logout();
-        }
+    if (
+        event.target.closest(
+            '[data-action="logout"]'
+        )
+    ) {
+        logout();
     }
-);
+});
 
 // ==================================================
-// SIDEBAR / VIEWS
+// NAVIGATION
 // ==================================================
 
 function setupNavigation() {
 
-    $$('[data-view]').forEach(
-        button => {
+    $$('[data-view]').forEach(button => {
 
-            button.addEventListener(
-                'click',
-                () => {
+        button.addEventListener('click', () => {
 
-                    const view =
-                        button.dataset.view;
+            const view =
+                button.dataset.view;
 
-                    $$('[data-view]')
-                        .forEach(
-                            item =>
-                                item.classList
-                                    .remove(
-                                        'active'
-                                    )
-                        );
+            $$('[data-view]').forEach(item => {
 
-                    button.classList.add(
-                        'active'
-                    );
+                item.classList.remove('active');
 
-                    showView(
-                        view
-                    );
-                }
-            );
-        }
-    );
+            });
+
+            button.classList.add('active');
+
+            showView(view);
+        });
+    });
 }
 
 function showView(view) {
 
-    $$('[data-section]').forEach(
-        section => {
+    $$('[data-section]').forEach(section => {
 
-            section.style.display =
-                'none';
-        }
-    );
+        section.style.display = 'none';
+
+    });
 
     const section =
         document.querySelector(
@@ -366,8 +309,7 @@ function showView(view) {
         );
 
     if (section) {
-        section.style.display =
-            'block';
+        section.style.display = 'block';
     }
 
     if (view === 'dashboard') {
@@ -407,9 +349,7 @@ async function loadDashboard() {
         'memberships'
     ];
 
-    for (
-        const type of types
-    ) {
+    for (const type of types) {
 
         try {
 
@@ -425,7 +365,9 @@ async function loadDashboard() {
 
             if (counter) {
                 counter.textContent =
-                    data.length;
+                    Array.isArray(data)
+                        ? data.length
+                        : 0;
             }
 
         } catch (_) {}
@@ -444,15 +386,18 @@ async function loadDashboard() {
             );
 
         if (counter) {
+
             counter.textContent =
-                performances.length;
+                Array.isArray(performances)
+                    ? performances.length
+                    : 0;
         }
 
     } catch (_) {}
 }
 
 // ==================================================
-// CONTENT
+// WEBSITE CONTENT
 // ==================================================
 
 async function loadContent() {
@@ -460,13 +405,9 @@ async function loadContent() {
     try {
 
         const content =
-            await api(
-                '/api/content'
-            );
+            await api('/api/content');
 
-        Object.entries(
-            content
-        ).forEach(
+        Object.entries(content).forEach(
             ([key, value]) => {
 
                 const field =
@@ -475,8 +416,7 @@ async function loadContent() {
                     );
 
                 if (field) {
-                    field.value =
-                        value;
+                    field.value = value;
                 }
             }
         );
@@ -497,26 +437,20 @@ async function saveContent() {
 
     const data = {};
 
-    fields.forEach(
-        field => {
+    fields.forEach(field => {
 
-            if (field.name) {
-                data[field.name] =
-                    field.value;
-            }
+        if (field.name) {
+            data[field.name] =
+                field.value;
         }
-    );
+    });
 
     try {
 
-        await api(
-            '/api/content',
-            {
-                method: 'PUT',
-                body:
-                    JSON.stringify(data)
-            }
-        );
+        await api('/api/content', {
+            method: 'PUT',
+            body: JSON.stringify(data)
+        });
 
         showMessage(
             'Website content saved successfully.'
@@ -579,19 +513,20 @@ function renderCrud(
 
     let html = `
         <div class="admin-crud-header">
+
             <h2>
                 ${escapeHTML(
-                    type.charAt(0)
-                        .toUpperCase() +
+                    type.charAt(0).toUpperCase() +
                     type.slice(1)
                 )}
             </h2>
 
             <button
                 class="admin-btn"
-                data-add="${type}">
+                data-add="${escapeHTML(type)}">
                 + Add
             </button>
+
         </div>
     `;
 
@@ -603,140 +538,144 @@ function renderCrud(
             </div>
         `;
 
-        container.innerHTML =
-            html;
+        container.innerHTML = html;
 
         return;
     }
 
     html += `
         <div class="admin-table-wrap">
+
             <table class="admin-table">
+
                 <thead>
+
                     <tr>
+
                         <th>ID</th>
+
                         ${fields.map(
                             field =>
                                 `<th>${escapeHTML(field)}</th>`
                         ).join('')}
+
                         <th>Actions</th>
+
                     </tr>
+
                 </thead>
 
                 <tbody>
     `;
 
-    rows.forEach(
-        row => {
+    rows.forEach(row => {
 
-            html += `
-                <tr>
-                    <td>${row.id}</td>
+        html += `
+            <tr>
 
-                    ${fields.map(
-                        field => `
+                <td>
+                    ${escapeHTML(row.id)}
+                </td>
+
+                ${fields.map(
+                    field => `
                         <td>
                             ${escapeHTML(
                                 row[field]
                             )}
                         </td>
-                    `).join('')}
+                    `
+                ).join('')}
 
-                    <td>
-                        <button
-                            class="admin-btn small"
-                            data-edit="${type}"
-                            data-id="${row.id}">
-                            Edit
-                        </button>
+                <td>
 
-                        <button
-                            class="admin-btn danger small"
-                            data-delete="${type}"
-                            data-id="${row.id}">
-                            Delete
-                        </button>
-                    </td>
-                </tr>
-            `;
-        }
-    );
+                    <button
+                        class="admin-btn small"
+                        data-edit="${escapeHTML(type)}"
+                        data-id="${escapeHTML(row.id)}">
+                        Edit
+                    </button>
+
+                    <button
+                        class="admin-btn danger small"
+                        data-delete="${escapeHTML(type)}"
+                        data-id="${escapeHTML(row.id)}">
+                        Delete
+                    </button>
+
+                </td>
+
+            </tr>
+        `;
+
+    });
 
     html += `
                 </tbody>
+
             </table>
+
         </div>
     `;
 
-    container.innerHTML =
-        html;
+    container.innerHTML = html;
 }
 
 // ==================================================
 // GENERIC CRUD BUTTONS
 // ==================================================
 
-document.addEventListener(
-    'click',
-    event => {
+document.addEventListener('click', event => {
 
-        const add =
-            event.target.closest(
-                '[data-add]'
-            );
+    const add =
+        event.target.closest('[data-add]');
 
-        if (add) {
+    if (add) {
 
-            openCrudForm(
-                add.dataset.add
-            );
+        openCrudForm(
+            add.dataset.add
+        );
 
-            return;
-        }
-
-        const edit =
-            event.target.closest(
-                '[data-edit]'
-            );
-
-        if (edit) {
-
-            openCrudEdit(
-                edit.dataset.edit,
-                edit.dataset.id
-            );
-
-            return;
-        }
-
-        const del =
-            event.target.closest(
-                '[data-delete]'
-            );
-
-        if (del) {
-
-            deleteCrud(
-                del.dataset.delete,
-                del.dataset.id
-            );
-        }
+        return;
     }
-);
+
+    const edit =
+        event.target.closest('[data-edit]');
+
+    if (edit) {
+
+        openCrudEdit(
+            edit.dataset.edit,
+            edit.dataset.id
+        );
+
+        return;
+    }
+
+    const del =
+        event.target.closest('[data-delete]');
+
+    if (del) {
+
+        deleteCrud(
+            del.dataset.delete,
+            del.dataset.id
+        );
+    }
+});
 
 function openCrudForm(type) {
 
     const fields =
         schemas[type];
 
-    const values =
-        {};
+    const values = {};
 
-    fields.forEach(
-        field => {
-            values[field] = '';
-        }
-    );
+    fields.forEach(field => {
+
+        values[field] = '';
+
+    });
 
     showCrudModal(
         type,
@@ -744,10 +683,7 @@ function openCrudForm(type) {
     );
 }
 
-async function openCrudEdit(
-    type,
-    id
-) {
+async function openCrudEdit(type, id) {
 
     try {
 
@@ -764,6 +700,7 @@ async function openCrudEdit(
             );
 
         if (!row) {
+
             throw new Error(
                 'Item not found'
             );
@@ -783,18 +720,13 @@ async function openCrudEdit(
     }
 }
 
-function showCrudModal(
-    type,
-    row
-) {
+function showCrudModal(type, row) {
 
     const fields =
         schemas[type];
 
     const modal =
-        document.createElement(
-            'div'
-        );
+        document.createElement('div');
 
     modal.className =
         'admin-modal';
@@ -803,10 +735,9 @@ function showCrudModal(
         <div class="admin-modal-box">
 
             <div class="admin-modal-header">
+
                 <h3>
-                    ${row.id
-                        ? 'Edit'
-                        : 'Add'}
+                    ${row.id ? 'Edit' : 'Add'}
                     ${escapeHTML(type)}
                 </h3>
 
@@ -815,22 +746,26 @@ function showCrudModal(
                     class="modal-close">
                     ×
                 </button>
+
             </div>
 
             <form class="crud-form">
 
                 ${fields.map(
                     field => `
-                    <label>
-                        ${escapeHTML(field)}
+                        <label>
 
-                        <input
-                            name="${escapeHTML(field)}"
-                            value="${escapeHTML(
-                                row[field] || ''
-                            )}">
-                    </label>
-                `).join('')}
+                            ${escapeHTML(field)}
+
+                            <input
+                                name="${escapeHTML(field)}"
+                                value="${escapeHTML(
+                                    row[field] || ''
+                                )}">
+
+                        </label>
+                    `
+                ).join('')}
 
                 <button
                     type="submit"
@@ -839,12 +774,11 @@ function showCrudModal(
                 </button>
 
             </form>
+
         </div>
     `;
 
-    document.body.appendChild(
-        modal
-    );
+    document.body.appendChild(modal);
 
     modal.querySelector(
         '.modal-close'
@@ -859,15 +793,14 @@ function showCrudModal(
 
         const data = {};
 
-        fields.forEach(
-            field => {
+        fields.forEach(field => {
 
-                data[field] =
-                    event.target
-                        .elements[field]
-                        .value;
-            }
-        );
+            data[field] =
+                event.target
+                    .elements[field]
+                    .value;
+
+        });
 
         try {
 
@@ -912,10 +845,7 @@ function showCrudModal(
     };
 }
 
-async function deleteCrud(
-    type,
-    id
-) {
+async function deleteCrud(type, id) {
 
     if (
         !confirm(
@@ -977,6 +907,13 @@ async function loadPerformances() {
                 '/api/admin/performances'
             );
 
+        if (!Array.isArray(state.performances)) {
+
+            throw new Error(
+                'Invalid performances response'
+            );
+        }
+
         renderPerformances(
             container
         );
@@ -985,22 +922,33 @@ async function loadPerformances() {
 
         container.innerHTML = `
             <div class="admin-empty">
-                ${escapeHTML(
-                    error.message
-                )}
+
+                <h3>
+                    Unable to load Featured Performances
+                </h3>
+
+                <p>
+                    ${escapeHTML(
+                        error.message
+                    )}
+                </p>
+
             </div>
         `;
     }
 }
 
-function renderPerformances(
-    container
-) {
+// ==================================================
+// RENDER PERFORMANCES
+// ==================================================
+
+function renderPerformances(container) {
 
     let html = `
         <div class="performance-admin-header">
 
             <div>
+
                 <h2>
                     Featured Performances
                 </h2>
@@ -1009,6 +957,7 @@ function renderPerformances(
                     Manage performances
                     and their photos.
                 </p>
+
             </div>
 
             <button
@@ -1020,19 +969,17 @@ function renderPerformances(
         </div>
     `;
 
-    if (
-        !state.performances.length
-    ) {
+    if (!state.performances.length) {
 
         html += `
             <div class="admin-empty">
+
                 <h3>
                     No performances yet.
                 </h3>
 
                 <p>
-                    Add your first
-                    Featured Performance.
+                    Add your first Featured Performance.
                 </p>
 
                 <button
@@ -1040,6 +987,7 @@ function renderPerformances(
                     id="add-performance-empty">
                     + Add Performance
                 </button>
+
             </div>
         `;
 
@@ -1058,44 +1006,43 @@ function renderPerformances(
     state.performances.forEach(
         (performance, index) => {
 
+            const photos =
+                Array.isArray(
+                    performance.photos
+                )
+                    ? performance.photos
+                    : [];
+
             html += `
                 <article
                     class="performance-admin-card">
 
-                    <div class="performance-admin-info">
+                    <div class="performance-admin-top">
 
                         <div>
+
                             <span class="performance-number">
                                 ${index + 1}
                             </span>
 
-                            <div>
-                                <h3>
-                                    ${escapeHTML(
-                                        performance.title
-                                    )}
-                                </h3>
+                            <h3>
+                                ${escapeHTML(
+                                    performance.title
+                                )}
+                            </h3>
 
-                                ${
-                                    performance.description
+                            ${
+                                performance.description
                                     ? `
-                                    <p>
-                                        ${escapeHTML(
-                                            performance.description
-                                        )}
-                                    </p>
+                                        <p>
+                                            ${escapeHTML(
+                                                performance.description
+                                            )}
+                                        </p>
                                     `
                                     : ''
-                                }
+                            }
 
-                                <small>
-                                    ${
-                                        performance.photos
-                                            ?.length || 0
-                                    }
-                                    photo(s)
-                                </small>
-                            </div>
                         </div>
 
                         <div class="performance-actions">
@@ -1112,51 +1059,68 @@ function renderPerformances(
                                 Delete
                             </button>
 
-                            <button
-                                class="admin-btn small"
-                                data-performance-add-photo="${performance.id}">
-                                + Add Photos
-                            </button>
-
                         </div>
 
                     </div>
 
-                    <div class="performance-photos">
+                    <div class="performance-photo-header">
 
-                        ${
-                            performance.photos?.length
-                            ? performance.photos.map(
-                                photo => `
-                                <div
-                                    class="performance-photo">
+                        <div>
+                            <strong>
+                                Photos
+                            </strong>
 
-                                    <img
-                                        src="${escapeHTML(
-                                            photo.image
-                                        )}"
-                                        alt="${escapeHTML(
-                                            performance.title
-                                        )}"
-                                        loading="lazy">
+                            <span>
+                                ${photos.length}
+                            </span>
+                        </div>
 
-                                    <button
-                                        class="photo-delete"
-                                        data-photo-delete="${photo.id}">
-                                        ×
-                                    </button>
+                        <button
+                            class="admin-btn small"
+                            data-performance-photos="${performance.id}">
+                            + Add Photos
+                        </button>
+
+                    </div>
+
+                    ${
+                        photos.length
+                            ? `
+                                <div class="performance-photo-grid">
+
+                                    ${photos.map(
+                                        photo => `
+                                            <div
+                                                class="performance-photo-item">
+
+                                                <img
+                                                    src="${escapeHTML(
+                                                        photo.image
+                                                    )}"
+                                                    alt="${escapeHTML(
+                                                        photo.caption ||
+                                                        performance.title
+                                                    )}">
+
+                                                <button
+                                                    type="button"
+                                                    class="photo-delete-btn"
+                                                    data-performance-photo-delete="${photo.id}">
+                                                    ×
+                                                </button>
+
+                                            </div>
+                                        `
+                                    ).join('')}
 
                                 </div>
                             `
-                            ).join('')
                             : `
-                                <div class="no-photos">
+                                <div class="admin-empty small-empty">
                                     No photos added yet.
                                 </div>
                             `
-                        }
-
-                    </div>
+                    }
 
                 </article>
             `;
@@ -1173,109 +1137,41 @@ function renderPerformances(
     bindPerformanceAddButtons();
 }
 
+// ==================================================
+// ADD PERFORMANCE BUTTONS
+// ==================================================
+
 function bindPerformanceAddButtons() {
 
-    const buttons = [
-        '#add-performance',
-        '#add-performance-empty'
-    ];
+    const addButton =
+        $('#add-performance');
 
-    buttons.forEach(
-        selector => {
+    const emptyButton =
+        $('#add-performance-empty');
 
-            const button =
-                document.querySelector(
-                    selector
-                );
+    if (addButton) {
 
-            if (button) {
+        addButton.onclick = () =>
+            openPerformanceForm();
+    }
 
-                button.onclick =
-                    () =>
-                        openPerformanceModal();
-            }
-        }
-    );
+    if (emptyButton) {
+
+        emptyButton.onclick = () =>
+            openPerformanceForm();
+    }
 }
 
 // ==================================================
-// PERFORMANCE ACTIONS
+// PERFORMANCE FORM
 // ==================================================
 
-document.addEventListener(
-    'click',
-    event => {
-
-        const edit =
-            event.target.closest(
-                '[data-performance-edit]'
-            );
-
-        if (edit) {
-
-            editPerformance(
-                edit.dataset.performanceEdit
-            );
-
-            return;
-        }
-
-        const del =
-            event.target.closest(
-                '[data-performance-delete]'
-            );
-
-        if (del) {
-
-            deletePerformance(
-                del.dataset.performanceDelete
-            );
-
-            return;
-        }
-
-        const addPhotos =
-            event.target.closest(
-                '[data-performance-add-photo]'
-            );
-
-        if (addPhotos) {
-
-            openPhotoUploader(
-                addPhotos.dataset
-                    .performanceAddPhoto
-            );
-
-            return;
-        }
-
-        const deletePhoto =
-            event.target.closest(
-                '[data-photo-delete]'
-            );
-
-        if (deletePhoto) {
-
-            deletePerformancePhoto(
-                deletePhoto.dataset
-                    .photoDelete
-            );
-        }
-    }
-);
-
-// ==================================================
-// ADD PERFORMANCE
-// ==================================================
-
-function openPerformanceModal(
-    existing = null
+function openPerformanceForm(
+    performance = null
 ) {
 
     const modal =
-        document.createElement(
-            'div'
-        );
+        document.createElement('div');
 
     modal.className =
         'admin-modal';
@@ -1287,21 +1183,21 @@ function openPerformanceModal(
 
                 <h3>
                     ${
-                        existing
-                        ? 'Edit Performance'
-                        : 'Add Performance'
+                        performance
+                            ? 'Edit Performance'
+                            : 'Add Performance'
                     }
                 </h3>
 
                 <button
+                    type="button"
                     class="modal-close">
                     ×
                 </button>
 
             </div>
 
-            <form
-                id="performance-form">
+            <form id="performance-form">
 
                 <label>
                     Performance Title
@@ -1310,8 +1206,9 @@ function openPerformanceModal(
                         name="title"
                         required
                         value="${escapeHTML(
-                            existing?.title || ''
-                        )}">
+                            performance?.title || ''
+                        )}"
+                        placeholder="e.g. হয়গ্ৰীব শঙ্খগ্ৰীব বধ">
                 </label>
 
                 <label>
@@ -1320,20 +1217,20 @@ function openPerformanceModal(
                     <textarea
                         name="description"
                         rows="4"
-                    >${escapeHTML(
-                        existing?.description || ''
-                    )}</textarea>
+                        placeholder="Optional description">${escapeHTML(
+                            performance?.description || ''
+                        )}</textarea>
                 </label>
 
                 <label>
-                    Display Order
+                    Sort Order
 
                     <input
                         type="number"
                         name="sort_order"
-                        value="${existing
-                            ? existing.sort_order
-                            : state.performances.length + 1}">
+                        value="${escapeHTML(
+                            performance?.sort_order ?? 0
+                        )}">
                 </label>
 
                 <button
@@ -1347,9 +1244,7 @@ function openPerformanceModal(
         </div>
     `;
 
-    document.body.appendChild(
-        modal
-    );
+    document.body.appendChild(modal);
 
     modal.querySelector(
         '.modal-close'
@@ -1366,25 +1261,24 @@ function openPerformanceModal(
             event.target;
 
         const data = {
-
             title:
-                form.title.value,
+                form.elements.title.value.trim(),
 
             description:
-                form.description.value,
+                form.elements.description.value.trim(),
 
             sort_order:
                 Number(
-                    form.sort_order.value
-                ) || 0
+                    form.elements.sort_order.value || 0
+                )
         };
 
         try {
 
-            if (existing) {
+            if (performance?.id) {
 
                 await api(
-                    `/api/admin/performances/${existing.id}`,
+                    `/api/admin/performances/${performance.id}`,
                     {
                         method: 'PUT',
                         body:
@@ -1426,31 +1320,42 @@ function openPerformanceModal(
 // EDIT PERFORMANCE
 // ==================================================
 
-function editPerformance(id) {
+async function editPerformance(id) {
 
-    const performance =
-        state.performances.find(
-            item =>
-                String(item.id) ===
-                String(id)
+    try {
+
+        const performance =
+            state.performances.find(
+                item =>
+                    String(item.id) ===
+                    String(id)
+            );
+
+        if (!performance) {
+
+            throw new Error(
+                'Performance not found'
+            );
+        }
+
+        openPerformanceForm(
+            performance
         );
 
-    if (!performance) {
-        return;
-    }
+    } catch (error) {
 
-    openPerformanceModal(
-        performance
-    );
+        showMessage(
+            error.message,
+            'error'
+        );
+    }
 }
 
 // ==================================================
 // DELETE PERFORMANCE
 // ==================================================
 
-async function deletePerformance(
-    id
-) {
+async function deletePerformance(id) {
 
     if (
         !confirm(
@@ -1470,11 +1375,10 @@ async function deletePerformance(
         );
 
         showMessage(
-            'Performance deleted.'
+            'Performance deleted successfully.'
         );
 
         loadPerformances();
-        loadDashboard();
 
     } catch (error) {
 
@@ -1486,111 +1390,107 @@ async function deletePerformance(
 }
 
 // ==================================================
-// PHOTO UPLOADER
+// PERFORMANCE CLICK ACTIONS
 // ==================================================
 
-function openPhotoUploader(
+document.addEventListener(
+    'click',
+    event => {
+
+        const edit =
+            event.target.closest(
+                '[data-performance-edit]'
+            );
+
+        if (edit) {
+
+            editPerformance(
+                edit.dataset.performanceEdit
+            );
+
+            return;
+        }
+
+        const del =
+            event.target.closest(
+                '[data-performance-delete]'
+            );
+
+        if (del) {
+
+            deletePerformance(
+                del.dataset.performanceDelete
+            );
+
+            return;
+        }
+
+        const photos =
+            event.target.closest(
+                '[data-performance-photos]'
+            );
+
+        if (photos) {
+
+            addPerformancePhotos(
+                photos.dataset.performancePhotos
+            );
+
+            return;
+        }
+
+        const photoDelete =
+            event.target.closest(
+                '[data-performance-photo-delete]'
+            );
+
+        if (photoDelete) {
+
+            deletePerformancePhoto(
+                photoDelete.dataset
+                    .performancePhotoDelete
+            );
+        }
+    }
+);
+
+// ==================================================
+// ADD PERFORMANCE PHOTOS
+// ==================================================
+
+function addPerformancePhotos(
     performanceId
 ) {
 
-    const modal =
-        document.createElement(
-            'div'
-        );
+    const input =
+        document.createElement('input');
 
-    modal.className =
-        'admin-modal';
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.multiple = true;
+    input.style.display = 'none';
 
-    modal.innerHTML = `
-        <div class="admin-modal-box">
+    document.body.appendChild(input);
 
-            <div class="admin-modal-header">
-
-                <h3>
-                    Add Performance Photos
-                </h3>
-
-                <button
-                    class="modal-close">
-                    ×
-                </button>
-
-            </div>
-
-            <form
-                id="photo-upload-form">
-
-                <label>
-                    Select Photos
-
-                    <input
-                        id="performance-photo-files"
-                        type="file"
-                        accept="image/*"
-                        multiple
-                        required>
-                </label>
-
-                <div
-                    id="photo-upload-status">
-                </div>
-
-                <button
-                    type="submit"
-                    class="admin-btn">
-                    Upload Photos
-                </button>
-
-            </form>
-
-        </div>
-    `;
-
-    document.body.appendChild(
-        modal
-    );
-
-    modal.querySelector(
-        '.modal-close'
-    ).onclick = () =>
-        modal.remove();
-
-    modal.querySelector(
-        '#photo-upload-form'
-    ).onsubmit = async event => {
-
-        event.preventDefault();
-
-        const input =
-            document.querySelector(
-                '#performance-photo-files'
-            );
+    input.onchange = async () => {
 
         const files =
             [...input.files];
 
         if (!files.length) {
+
+            input.remove();
+
             return;
         }
 
-        const status =
-            document.querySelector(
-                '#photo-upload-status'
-            );
-
-        status.textContent =
-            `Uploading 0/${files.length}...`;
-
         try {
 
-            for (
-                let i = 0;
-                i < files.length;
-                i++
-            ) {
+            showMessage(
+                `Uploading ${files.length} photo(s)...`
+            );
 
-                const file =
-                    files[i];
+            for (const file of files) {
 
                 const formData =
                     new FormData();
@@ -1607,20 +1507,31 @@ function openPhotoUploader(
                             method: 'POST',
                             credentials:
                                 'same-origin',
-                            body:
-                                formData
+                            body: formData
                         }
                     );
 
-                const uploadData =
-                    await uploadResponse.json();
+                let uploadData = {};
 
-                if (
-                    !uploadResponse.ok
-                ) {
+                try {
+
+                    uploadData =
+                        await uploadResponse.json();
+
+                } catch (_) {}
+
+                if (!uploadResponse.ok) {
+
                     throw new Error(
                         uploadData.error ||
-                        'Upload failed'
+                        `Failed to upload ${file.name}`
+                    );
+                }
+
+                if (!uploadData.url) {
+
+                    throw new Error(
+                        `Upload failed for ${file.name}`
                     );
                 }
 
@@ -1632,41 +1543,33 @@ function openPhotoUploader(
                             JSON.stringify({
                                 image:
                                     uploadData.url,
-
                                 caption:
-                                    '',
-
-                                sort_order:
-                                    i
+                                    file.name
                             })
                     }
                 );
-
-                status.textContent =
-                    `Uploading ${
-                        i + 1
-                    }/${files.length}...`;
             }
 
-            modal.remove();
-
             showMessage(
-                `${files.length} photo(s) uploaded successfully.`
+                'Photos uploaded successfully.'
             );
 
             loadPerformances();
 
         } catch (error) {
 
-            status.textContent =
-                error.message;
-
             showMessage(
                 error.message,
                 'error'
             );
+
+        } finally {
+
+            input.remove();
         }
     };
+
+    input.click();
 }
 
 // ==================================================
@@ -1695,7 +1598,7 @@ async function deletePerformancePhoto(
         );
 
         showMessage(
-            'Photo deleted.'
+            'Photo deleted successfully.'
         );
 
         loadPerformances();
@@ -1710,25 +1613,7 @@ async function deletePerformancePhoto(
 }
 
 // ==================================================
-// SAVE CONTENT BUTTON
-// ==================================================
-
-document.addEventListener(
-    'click',
-    event => {
-
-        if (
-            event.target.closest(
-                '[data-save-content]'
-            )
-        ) {
-            saveContent();
-        }
-    }
-);
-
-// ==================================================
-// INITIALIZATION
+// INITIALIZE
 // ==================================================
 
 document.addEventListener(
@@ -1739,16 +1624,5 @@ document.addEventListener(
 
         checkAuth();
 
-        // Open dashboard initially
-        const dashboardButton =
-            document.querySelector(
-                '[data-view="dashboard"]'
-            );
-
-        if (dashboardButton) {
-            dashboardButton.classList.add(
-                'active'
-            );
-        }
     }
 );
