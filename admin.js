@@ -1,63 +1,1754 @@
-const A={view:document.querySelector('#view'),title:document.querySelector('#viewTitle')};
-const $=s=>document.querySelector(s);
-const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const uploadFields={events:'poster',gallery:'image',team:'photo',news:'image'};
-async function api(u,o){const r=await fetch(u,o);if(r.status===401)throw Error('Unauthorized');const data=await r.json();if(!r.ok)throw Error(data.error||'Request failed');return data}
-async function check(){try{await api('/api/me');showApp();render('dashboard')}catch{}}
-function showApp(){$('#login').classList.add('hidden');$('#app').classList.remove('hidden')}
-$('#loginForm').onsubmit=async e=>{e.preventDefault();try{const d=Object.fromEntries(new FormData(e.target));const r=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)});if(r.ok){showApp();render('dashboard')}else $('#loginMsg').textContent='Invalid credentials'}catch{$('#loginMsg').textContent='Could not connect to server'}};
-$('#logout').onclick=async()=>{await api('/api/logout',{method:'POST'});location.reload()};
-document.querySelectorAll('aside button[data-view]').forEach(b=>b.onclick=()=>render(b.dataset.view));
+// ==================================================
+// SANMILITA YUVAK SANGHA - ADMIN DASHBOARD
+// ==================================================
 
-async function uploadImage(file){
-  const fd=new FormData();fd.append('image',file);
-  const r=await fetch('/api/upload',{method:'POST',body:fd});
-  const data=await r.json();
-  if(!r.ok)throw Error(data.error||'Upload failed');
-  return data.url;
-}
-function imageControl(field){
-  return `<div class="upload-box"><label>${field}<input name="${field}" class="image-url" placeholder="Uploaded image URL" autocomplete="off"><div class="upload-row"><input type="file" class="image-file" data-target="${field}" accept="image/jpeg,image/png,image/webp,image/gif"><button type="button" class="upload-btn">Choose & Upload Photo</button></div><div class="upload-status" aria-live="polite"></div><img class="upload-preview" alt="Preview" hidden></div></div>`;
-}
-function normalField(f){
-  if(f==='published')return `<label class="check-field"><input name="published" type="checkbox" value="1"> Published</label>`;
-  if(f==='description'||f==='body_as'||f==='body_en'||f==='bio')return `<textarea name="${f}" placeholder="${f}"></textarea>`;
-  return `<input name="${f}" placeholder="${f}">`;
-}
-function wireUploads(form){
-  form.querySelectorAll('.upload-box').forEach(box=>{
-    const file=box.querySelector('.image-file'),url=box.querySelector('.image-url'),btn=box.querySelector('.upload-btn'),status=box.querySelector('.upload-status'),preview=box.querySelector('.upload-preview');
-    file.onchange=async()=>{if(file.files[0])await doUpload(file.files[0])};
-    btn.onclick=()=>file.click();
-    async function doUpload(f){
-      if(!f.type.startsWith('image/')){status.textContent='Please choose an image file.';return}
-      status.textContent='Uploading…';btn.disabled=true;
-      try{const u=await uploadImage(f);url.value=u;preview.src=u;preview.hidden=false;status.textContent='Photo uploaded successfully.'}
-      catch(e){status.textContent=e.message||'Upload failed.'}
-      finally{btn.disabled=false}
+const state = {
+    performances: []
+};
+
+const schemas = {
+    events: [
+        'name',
+        'date',
+        'time',
+        'venue',
+        'description',
+        'category',
+        'status',
+        'poster'
+    ],
+
+    gallery: [
+        'album',
+        'caption',
+        'category',
+        'image'
+    ],
+
+    team: [
+        'name',
+        'designation',
+        'bio',
+        'photo'
+    ],
+
+    news: [
+        'title_as',
+        'title_en',
+        'date',
+        'category',
+        'author',
+        'image',
+        'body_as',
+        'body_en',
+        'published'
+    ]
+};
+
+// ==================================================
+// HELPERS
+// ==================================================
+
+const $ = selector =>
+    document.querySelector(selector);
+
+const $$ = selector =>
+    [...document.querySelectorAll(selector)];
+
+async function api(
+    url,
+    options = {}
+) {
+    const response =
+        await fetch(url, {
+            credentials: 'same-origin',
+            ...options,
+            headers: {
+                'Content-Type':
+                    'application/json',
+                ...(options.headers || {})
+            }
+        });
+
+    let data = {};
+
+    try {
+        data = await response.json();
+    } catch (_) {}
+
+    if (!response.ok) {
+        throw new Error(
+            data.error ||
+            'Something went wrong'
+        );
     }
-    url.addEventListener('input',()=>{if(url.value){preview.src=url.value;preview.hidden=false}else preview.hidden=true});
-  });
+
+    return data;
 }
 
-async function render(v){
-  A.title.textContent=v[0].toUpperCase()+v.slice(1);document.querySelectorAll('aside button').forEach(x=>x.classList.toggle('active',x.dataset.view===v));
-  if(v==='dashboard'){
-    const [e,g,t,n,m]=await Promise.all(['events','gallery','team','news','memberships'].map(x=>api('/api/admin/'+x)));
-    A.view.innerHTML=`<div class="grid">${[['Events',e.length],['Gallery',g.length],['Team',t.length],['News',n.length],['Memberships',m.length]].map(x=>`<div class="stat"><span>${x[0]}</span><b>${x[1]}</b></div>`).join('')}</div><div class="panel"><h2>Content control</h2><p class="muted">Upload photos directly from your phone. Uploaded images can then be attached to gallery items, events, team profiles and news.</p></div>`;
-  }else if(v==='content'||v==='contact'){
-    const c=await api('/api/content');const keys=v==='content'?['hero_as','hero_en','hero_sub','identity','about_start','about_mission','about_vision']:['contact_address','contact_phone','contact_email','facebook','instagram','youtube','whatsapp'];
-    A.view.innerHTML=`<div class="panel"><form id="contentForm" class="form">${keys.map(k=>`<label>${k}<input name="${k}" value="${esc(c[k])}"></label>`).join('')}<button class="primary">Save changes</button></form></div>`;
-    $('#contentForm').onsubmit=async e=>{e.preventDefault();await api('/api/content',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(Object.fromEntries(new FormData(e.target)))});alert('Saved')};
-  }else await crud(v);
+function escapeHTML(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
 }
 
-const schemas={events:['name','date','time','venue','description','category','status','poster'],gallery:['album','caption','category','image'],team:['name','designation','bio','photo'],news:['title_as','title_en','date','category','author','image','body_as','body_en','published']};
-async function crud(type){
-  const rows=await api('/api/admin/'+type),fields=schemas[type],imageField=uploadFields[type];
-  A.view.innerHTML=`<div class="panel"><h2>Add ${type}</h2><p class="muted">For photos, tap <strong>Choose & Upload Photo</strong> and select an image from your Android phone. The uploaded path is saved automatically.</p><form id="itemForm" class="form">${fields.map(f=>f===imageField?imageControl(f):normalField(f)).join('')}<button class="primary">Add item</button></form></div><div class="panel table-wrap"><table class="table"><thead><tr><th>ID</th><th>Primary info</th><th>Action</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${r.id}</td><td>${esc(r.name||r.title_as||r.caption||r.full_name||'—')}</td><td><button class="danger" onclick="del('${type}',${r.id})">Delete</button></td></tr>`).join('')}</tbody></table></div>`;
-  const form=$('#itemForm');wireUploads(form);
-  form.onsubmit=async e=>{e.preventDefault();const data=Object.fromEntries(new FormData(e.target));if(type==='news'&&!data.published)data.published='0';await api('/api/'+type,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});render(type)};
+function showMessage(
+    message,
+    type = 'success'
+) {
+    let box =
+        $('#admin-message');
+
+    if (!box) {
+        box = document.createElement('div');
+        box.id = 'admin-message';
+
+        Object.assign(
+            box.style,
+            {
+                position: 'fixed',
+                top: '20px',
+                right: '20px',
+                zIndex: '99999',
+                padding: '14px 18px',
+                borderRadius: '10px',
+                background: '#222',
+                color: '#fff',
+                fontSize: '14px',
+                boxShadow:
+                    '0 10px 30px rgba(0,0,0,.2)'
+            }
+        );
+
+        document.body.appendChild(box);
+    }
+
+    box.textContent = message;
+
+    box.style.background =
+        type === 'error'
+            ? '#b42318'
+            : '#176b3a';
+
+    clearTimeout(
+        box._timer
+    );
+
+    box._timer =
+        setTimeout(() => {
+            box.remove();
+        }, 3000);
 }
-async function del(t,id){if(confirm('Delete this item?')){await api('/api/'+t+'/'+id,{method:'DELETE'});render(t)}}
-check();
+
+// ==================================================
+// AUTH
+// ==================================================
+
+async function checkAuth() {
+    try {
+
+        const admin =
+            await api('/api/me');
+
+        showAdmin(
+            admin
+        );
+
+    } catch (error) {
+
+        showLogin();
+    }
+}
+
+function showLogin() {
+
+    const login =
+        $('#login-page');
+
+    const dashboard =
+        $('#admin-app');
+
+    if (login) {
+        login.style.display =
+            'flex';
+    }
+
+    if (dashboard) {
+        dashboard.style.display =
+            'none';
+    }
+}
+
+function showAdmin(admin) {
+
+    const login =
+        $('#login-page');
+
+    const dashboard =
+        $('#admin-app');
+
+    if (login) {
+        login.style.display =
+            'none';
+    }
+
+    if (dashboard) {
+        dashboard.style.display =
+            'block';
+    }
+
+    const email =
+        $('#admin-email-display');
+
+    if (email) {
+        email.textContent =
+            admin.email || '';
+    }
+
+    loadDashboard();
+}
+
+// ==================================================
+// LOGIN FORM
+// ==================================================
+
+document.addEventListener(
+    'submit',
+    async event => {
+
+        if (
+            event.target.id !==
+            'login-form'
+        ) {
+            return;
+        }
+
+        event.preventDefault();
+
+        const form =
+            event.target;
+
+        const email =
+            form.querySelector(
+                '[name="email"]'
+            )?.value || '';
+
+        const password =
+            form.querySelector(
+                '[name="password"]'
+            )?.value || '';
+
+        try {
+
+            const result =
+                await api(
+                    '/api/login',
+                    {
+                        method: 'POST',
+                        body:
+                            JSON.stringify({
+                                email,
+                                password
+                            })
+                    }
+                );
+
+            if (result.ok) {
+                showAdmin({
+                    email
+                });
+            }
+
+        } catch (error) {
+
+            showMessage(
+                error.message,
+                'error'
+            );
+        }
+    }
+);
+
+// ==================================================
+// LOGOUT
+// ==================================================
+
+async function logout() {
+
+    try {
+
+        await api(
+            '/api/logout',
+            {
+                method: 'POST'
+            }
+        );
+
+        location.reload();
+
+    } catch (error) {
+
+        showMessage(
+            error.message,
+            'error'
+        );
+    }
+}
+
+document.addEventListener(
+    'click',
+    event => {
+
+        if (
+            event.target.closest(
+                '[data-action="logout"]'
+            )
+        ) {
+            logout();
+        }
+    }
+);
+
+// ==================================================
+// SIDEBAR / VIEWS
+// ==================================================
+
+function setupNavigation() {
+
+    $$('[data-view]').forEach(
+        button => {
+
+            button.addEventListener(
+                'click',
+                () => {
+
+                    const view =
+                        button.dataset.view;
+
+                    $$('[data-view]')
+                        .forEach(
+                            item =>
+                                item.classList
+                                    .remove(
+                                        'active'
+                                    )
+                        );
+
+                    button.classList.add(
+                        'active'
+                    );
+
+                    showView(
+                        view
+                    );
+                }
+            );
+        }
+    );
+}
+
+function showView(view) {
+
+    $$('[data-section]').forEach(
+        section => {
+
+            section.style.display =
+                'none';
+        }
+    );
+
+    const section =
+        document.querySelector(
+            `[data-section="${view}"]`
+        );
+
+    if (section) {
+        section.style.display =
+            'block';
+    }
+
+    if (view === 'dashboard') {
+        loadDashboard();
+    }
+
+    if (view === 'performances') {
+        loadPerformances();
+    }
+
+    if (
+        view === 'events' ||
+        view === 'gallery' ||
+        view === 'team' ||
+        view === 'news' ||
+        view === 'memberships'
+    ) {
+        loadCrud(view);
+    }
+
+    if (view === 'content') {
+        loadContent();
+    }
+}
+
+// ==================================================
+// DASHBOARD
+// ==================================================
+
+async function loadDashboard() {
+
+    const types = [
+        'events',
+        'gallery',
+        'team',
+        'news',
+        'memberships'
+    ];
+
+    for (
+        const type of types
+    ) {
+
+        try {
+
+            const data =
+                await api(
+                    `/api/admin/${type}`
+                );
+
+            const counter =
+                document.querySelector(
+                    `[data-count="${type}"]`
+                );
+
+            if (counter) {
+                counter.textContent =
+                    data.length;
+            }
+
+        } catch (_) {}
+    }
+
+    try {
+
+        const performances =
+            await api(
+                '/api/admin/performances'
+            );
+
+        const counter =
+            document.querySelector(
+                '[data-count="performances"]'
+            );
+
+        if (counter) {
+            counter.textContent =
+                performances.length;
+        }
+
+    } catch (_) {}
+}
+
+// ==================================================
+// CONTENT
+// ==================================================
+
+async function loadContent() {
+
+    try {
+
+        const content =
+            await api(
+                '/api/content'
+            );
+
+        Object.entries(
+            content
+        ).forEach(
+            ([key, value]) => {
+
+                const field =
+                    document.querySelector(
+                        `[name="${key}"]`
+                    );
+
+                if (field) {
+                    field.value =
+                        value;
+                }
+            }
+        );
+
+    } catch (error) {
+
+        showMessage(
+            error.message,
+            'error'
+        );
+    }
+}
+
+async function saveContent() {
+
+    const fields =
+        $$('[data-content-field]');
+
+    const data = {};
+
+    fields.forEach(
+        field => {
+
+            if (field.name) {
+                data[field.name] =
+                    field.value;
+            }
+        }
+    );
+
+    try {
+
+        await api(
+            '/api/content',
+            {
+                method: 'PUT',
+                body:
+                    JSON.stringify(data)
+            }
+        );
+
+        showMessage(
+            'Website content saved successfully.'
+        );
+
+    } catch (error) {
+
+        showMessage(
+            error.message,
+            'error'
+        );
+    }
+}
+
+// ==================================================
+// GENERIC CRUD
+// ==================================================
+
+async function loadCrud(type) {
+
+    const container =
+        document.querySelector(
+            `[data-crud="${type}"]`
+        );
+
+    if (!container) {
+        return;
+    }
+
+    try {
+
+        const rows =
+            await api(
+                `/api/admin/${type}`
+            );
+
+        renderCrud(
+            type,
+            rows,
+            container
+        );
+
+    } catch (error) {
+
+        container.innerHTML =
+            `<p>${escapeHTML(
+                error.message
+            )}</p>`;
+    }
+}
+
+function renderCrud(
+    type,
+    rows,
+    container
+) {
+
+    const fields =
+        schemas[type];
+
+    let html = `
+        <div class="admin-crud-header">
+            <h2>
+                ${escapeHTML(
+                    type.charAt(0)
+                        .toUpperCase() +
+                    type.slice(1)
+                )}
+            </h2>
+
+            <button
+                class="admin-btn"
+                data-add="${type}">
+                + Add
+            </button>
+        </div>
+    `;
+
+    if (!rows.length) {
+
+        html += `
+            <div class="admin-empty">
+                No items yet.
+            </div>
+        `;
+
+        container.innerHTML =
+            html;
+
+        return;
+    }
+
+    html += `
+        <div class="admin-table-wrap">
+            <table class="admin-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        ${fields.map(
+                            field =>
+                                `<th>${escapeHTML(field)}</th>`
+                        ).join('')}
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+    `;
+
+    rows.forEach(
+        row => {
+
+            html += `
+                <tr>
+                    <td>${row.id}</td>
+
+                    ${fields.map(
+                        field => `
+                        <td>
+                            ${escapeHTML(
+                                row[field]
+                            )}
+                        </td>
+                    `).join('')}
+
+                    <td>
+                        <button
+                            class="admin-btn small"
+                            data-edit="${type}"
+                            data-id="${row.id}">
+                            Edit
+                        </button>
+
+                        <button
+                            class="admin-btn danger small"
+                            data-delete="${type}"
+                            data-id="${row.id}">
+                            Delete
+                        </button>
+                    </td>
+                </tr>
+            `;
+        }
+    );
+
+    html += `
+                </tbody>
+            </table>
+        </div>
+    `;
+
+    container.innerHTML =
+        html;
+}
+
+// ==================================================
+// GENERIC CRUD BUTTONS
+// ==================================================
+
+document.addEventListener(
+    'click',
+    event => {
+
+        const add =
+            event.target.closest(
+                '[data-add]'
+            );
+
+        if (add) {
+
+            openCrudForm(
+                add.dataset.add
+            );
+
+            return;
+        }
+
+        const edit =
+            event.target.closest(
+                '[data-edit]'
+            );
+
+        if (edit) {
+
+            openCrudEdit(
+                edit.dataset.edit,
+                edit.dataset.id
+            );
+
+            return;
+        }
+
+        const del =
+            event.target.closest(
+                '[data-delete]'
+            );
+
+        if (del) {
+
+            deleteCrud(
+                del.dataset.delete,
+                del.dataset.id
+            );
+        }
+    }
+);
+
+function openCrudForm(type) {
+
+    const fields =
+        schemas[type];
+
+    const values =
+        {};
+
+    fields.forEach(
+        field => {
+            values[field] = '';
+        }
+    );
+
+    showCrudModal(
+        type,
+        values
+    );
+}
+
+async function openCrudEdit(
+    type,
+    id
+) {
+
+    try {
+
+        const rows =
+            await api(
+                `/api/admin/${type}`
+            );
+
+        const row =
+            rows.find(
+                item =>
+                    String(item.id) ===
+                    String(id)
+            );
+
+        if (!row) {
+            throw new Error(
+                'Item not found'
+            );
+        }
+
+        showCrudModal(
+            type,
+            row
+        );
+
+    } catch (error) {
+
+        showMessage(
+            error.message,
+            'error'
+        );
+    }
+}
+
+function showCrudModal(
+    type,
+    row
+) {
+
+    const fields =
+        schemas[type];
+
+    const modal =
+        document.createElement(
+            'div'
+        );
+
+    modal.className =
+        'admin-modal';
+
+    modal.innerHTML = `
+        <div class="admin-modal-box">
+
+            <div class="admin-modal-header">
+                <h3>
+                    ${row.id
+                        ? 'Edit'
+                        : 'Add'}
+                    ${escapeHTML(type)}
+                </h3>
+
+                <button
+                    type="button"
+                    class="modal-close">
+                    ×
+                </button>
+            </div>
+
+            <form class="crud-form">
+
+                ${fields.map(
+                    field => `
+                    <label>
+                        ${escapeHTML(field)}
+
+                        <input
+                            name="${escapeHTML(field)}"
+                            value="${escapeHTML(
+                                row[field] || ''
+                            )}">
+                    </label>
+                `).join('')}
+
+                <button
+                    type="submit"
+                    class="admin-btn">
+                    Save
+                </button>
+
+            </form>
+        </div>
+    `;
+
+    document.body.appendChild(
+        modal
+    );
+
+    modal.querySelector(
+        '.modal-close'
+    ).onclick = () =>
+        modal.remove();
+
+    modal.querySelector(
+        '.crud-form'
+    ).onsubmit = async event => {
+
+        event.preventDefault();
+
+        const data = {};
+
+        fields.forEach(
+            field => {
+
+                data[field] =
+                    event.target
+                        .elements[field]
+                        .value;
+            }
+        );
+
+        try {
+
+            if (row.id) {
+
+                await api(
+                    `/api/${type}/${row.id}`,
+                    {
+                        method: 'PUT',
+                        body:
+                            JSON.stringify(data)
+                    }
+                );
+
+            } else {
+
+                await api(
+                    `/api/${type}`,
+                    {
+                        method: 'POST',
+                        body:
+                            JSON.stringify(data)
+                    }
+                );
+            }
+
+            modal.remove();
+
+            showMessage(
+                'Saved successfully.'
+            );
+
+            loadCrud(type);
+
+        } catch (error) {
+
+            showMessage(
+                error.message,
+                'error'
+            );
+        }
+    };
+}
+
+async function deleteCrud(
+    type,
+    id
+) {
+
+    if (
+        !confirm(
+            'Are you sure you want to delete this item?'
+        )
+    ) {
+        return;
+    }
+
+    try {
+
+        await api(
+            `/api/${type}/${id}`,
+            {
+                method: 'DELETE'
+            }
+        );
+
+        showMessage(
+            'Deleted successfully.'
+        );
+
+        loadCrud(type);
+
+    } catch (error) {
+
+        showMessage(
+            error.message,
+            'error'
+        );
+    }
+}
+
+// ==================================================
+// FEATURED PERFORMANCES
+// ==================================================
+
+async function loadPerformances() {
+
+    const container =
+        document.querySelector(
+            '[data-crud="performances"]'
+        );
+
+    if (!container) {
+        return;
+    }
+
+    container.innerHTML = `
+        <div class="admin-loading">
+            Loading Featured Performances...
+        </div>
+    `;
+
+    try {
+
+        state.performances =
+            await api(
+                '/api/admin/performances'
+            );
+
+        renderPerformances(
+            container
+        );
+
+    } catch (error) {
+
+        container.innerHTML = `
+            <div class="admin-empty">
+                ${escapeHTML(
+                    error.message
+                )}
+            </div>
+        `;
+    }
+}
+
+function renderPerformances(
+    container
+) {
+
+    let html = `
+        <div class="performance-admin-header">
+
+            <div>
+                <h2>
+                    Featured Performances
+                </h2>
+
+                <p>
+                    Manage performances
+                    and their photos.
+                </p>
+            </div>
+
+            <button
+                class="admin-btn"
+                id="add-performance">
+                + Add Performance
+            </button>
+
+        </div>
+    `;
+
+    if (
+        !state.performances.length
+    ) {
+
+        html += `
+            <div class="admin-empty">
+                <h3>
+                    No performances yet.
+                </h3>
+
+                <p>
+                    Add your first
+                    Featured Performance.
+                </p>
+
+                <button
+                    class="admin-btn"
+                    id="add-performance-empty">
+                    + Add Performance
+                </button>
+            </div>
+        `;
+
+        container.innerHTML =
+            html;
+
+        bindPerformanceAddButtons();
+
+        return;
+    }
+
+    html += `
+        <div class="performance-list">
+    `;
+
+    state.performances.forEach(
+        (performance, index) => {
+
+            html += `
+                <article
+                    class="performance-admin-card">
+
+                    <div class="performance-admin-info">
+
+                        <div>
+                            <span class="performance-number">
+                                ${index + 1}
+                            </span>
+
+                            <div>
+                                <h3>
+                                    ${escapeHTML(
+                                        performance.title
+                                    )}
+                                </h3>
+
+                                ${
+                                    performance.description
+                                    ? `
+                                    <p>
+                                        ${escapeHTML(
+                                            performance.description
+                                        )}
+                                    </p>
+                                    `
+                                    : ''
+                                }
+
+                                <small>
+                                    ${
+                                        performance.photos
+                                            ?.length || 0
+                                    }
+                                    photo(s)
+                                </small>
+                            </div>
+                        </div>
+
+                        <div class="performance-actions">
+
+                            <button
+                                class="admin-btn small"
+                                data-performance-edit="${performance.id}">
+                                Edit
+                            </button>
+
+                            <button
+                                class="admin-btn danger small"
+                                data-performance-delete="${performance.id}">
+                                Delete
+                            </button>
+
+                            <button
+                                class="admin-btn small"
+                                data-performance-add-photo="${performance.id}">
+                                + Add Photos
+                            </button>
+
+                        </div>
+
+                    </div>
+
+                    <div class="performance-photos">
+
+                        ${
+                            performance.photos?.length
+                            ? performance.photos.map(
+                                photo => `
+                                <div
+                                    class="performance-photo">
+
+                                    <img
+                                        src="${escapeHTML(
+                                            photo.image
+                                        )}"
+                                        alt="${escapeHTML(
+                                            performance.title
+                                        )}"
+                                        loading="lazy">
+
+                                    <button
+                                        class="photo-delete"
+                                        data-photo-delete="${photo.id}">
+                                        ×
+                                    </button>
+
+                                </div>
+                            `
+                            ).join('')
+                            : `
+                                <div class="no-photos">
+                                    No photos added yet.
+                                </div>
+                            `
+                        }
+
+                    </div>
+
+                </article>
+            `;
+        }
+    );
+
+    html += `
+        </div>
+    `;
+
+    container.innerHTML =
+        html;
+
+    bindPerformanceAddButtons();
+}
+
+function bindPerformanceAddButtons() {
+
+    const buttons = [
+        '#add-performance',
+        '#add-performance-empty'
+    ];
+
+    buttons.forEach(
+        selector => {
+
+            const button =
+                document.querySelector(
+                    selector
+                );
+
+            if (button) {
+
+                button.onclick =
+                    () =>
+                        openPerformanceModal();
+            }
+        }
+    );
+}
+
+// ==================================================
+// PERFORMANCE ACTIONS
+// ==================================================
+
+document.addEventListener(
+    'click',
+    event => {
+
+        const edit =
+            event.target.closest(
+                '[data-performance-edit]'
+            );
+
+        if (edit) {
+
+            editPerformance(
+                edit.dataset.performanceEdit
+            );
+
+            return;
+        }
+
+        const del =
+            event.target.closest(
+                '[data-performance-delete]'
+            );
+
+        if (del) {
+
+            deletePerformance(
+                del.dataset.performanceDelete
+            );
+
+            return;
+        }
+
+        const addPhotos =
+            event.target.closest(
+                '[data-performance-add-photo]'
+            );
+
+        if (addPhotos) {
+
+            openPhotoUploader(
+                addPhotos.dataset
+                    .performanceAddPhoto
+            );
+
+            return;
+        }
+
+        const deletePhoto =
+            event.target.closest(
+                '[data-photo-delete]'
+            );
+
+        if (deletePhoto) {
+
+            deletePerformancePhoto(
+                deletePhoto.dataset
+                    .photoDelete
+            );
+        }
+    }
+);
+
+// ==================================================
+// ADD PERFORMANCE
+// ==================================================
+
+function openPerformanceModal(
+    existing = null
+) {
+
+    const modal =
+        document.createElement(
+            'div'
+        );
+
+    modal.className =
+        'admin-modal';
+
+    modal.innerHTML = `
+        <div class="admin-modal-box">
+
+            <div class="admin-modal-header">
+
+                <h3>
+                    ${
+                        existing
+                        ? 'Edit Performance'
+                        : 'Add Performance'
+                    }
+                </h3>
+
+                <button
+                    class="modal-close">
+                    ×
+                </button>
+
+            </div>
+
+            <form
+                id="performance-form">
+
+                <label>
+                    Performance Title
+
+                    <input
+                        name="title"
+                        required
+                        value="${escapeHTML(
+                            existing?.title || ''
+                        )}">
+                </label>
+
+                <label>
+                    Description
+
+                    <textarea
+                        name="description"
+                        rows="4"
+                    >${escapeHTML(
+                        existing?.description || ''
+                    )}</textarea>
+                </label>
+
+                <label>
+                    Display Order
+
+                    <input
+                        type="number"
+                        name="sort_order"
+                        value="${existing
+                            ? existing.sort_order
+                            : state.performances.length + 1}">
+                </label>
+
+                <button
+                    type="submit"
+                    class="admin-btn">
+                    Save Performance
+                </button>
+
+            </form>
+
+        </div>
+    `;
+
+    document.body.appendChild(
+        modal
+    );
+
+    modal.querySelector(
+        '.modal-close'
+    ).onclick = () =>
+        modal.remove();
+
+    modal.querySelector(
+        '#performance-form'
+    ).onsubmit = async event => {
+
+        event.preventDefault();
+
+        const form =
+            event.target;
+
+        const data = {
+
+            title:
+                form.title.value,
+
+            description:
+                form.description.value,
+
+            sort_order:
+                Number(
+                    form.sort_order.value
+                ) || 0
+        };
+
+        try {
+
+            if (existing) {
+
+                await api(
+                    `/api/admin/performances/${existing.id}`,
+                    {
+                        method: 'PUT',
+                        body:
+                            JSON.stringify(data)
+                    }
+                );
+
+            } else {
+
+                await api(
+                    '/api/admin/performances',
+                    {
+                        method: 'POST',
+                        body:
+                            JSON.stringify(data)
+                    }
+                );
+            }
+
+            modal.remove();
+
+            showMessage(
+                'Performance saved successfully.'
+            );
+
+            loadPerformances();
+
+        } catch (error) {
+
+            showMessage(
+                error.message,
+                'error'
+            );
+        }
+    };
+}
+
+// ==================================================
+// EDIT PERFORMANCE
+// ==================================================
+
+function editPerformance(id) {
+
+    const performance =
+        state.performances.find(
+            item =>
+                String(item.id) ===
+                String(id)
+        );
+
+    if (!performance) {
+        return;
+    }
+
+    openPerformanceModal(
+        performance
+    );
+}
+
+// ==================================================
+// DELETE PERFORMANCE
+// ==================================================
+
+async function deletePerformance(
+    id
+) {
+
+    if (
+        !confirm(
+            'Delete this performance and all its photos?'
+        )
+    ) {
+        return;
+    }
+
+    try {
+
+        await api(
+            `/api/admin/performances/${id}`,
+            {
+                method: 'DELETE'
+            }
+        );
+
+        showMessage(
+            'Performance deleted.'
+        );
+
+        loadPerformances();
+        loadDashboard();
+
+    } catch (error) {
+
+        showMessage(
+            error.message,
+            'error'
+        );
+    }
+}
+
+// ==================================================
+// PHOTO UPLOADER
+// ==================================================
+
+function openPhotoUploader(
+    performanceId
+) {
+
+    const modal =
+        document.createElement(
+            'div'
+        );
+
+    modal.className =
+        'admin-modal';
+
+    modal.innerHTML = `
+        <div class="admin-modal-box">
+
+            <div class="admin-modal-header">
+
+                <h3>
+                    Add Performance Photos
+                </h3>
+
+                <button
+                    class="modal-close">
+                    ×
+                </button>
+
+            </div>
+
+            <form
+                id="photo-upload-form">
+
+                <label>
+                    Select Photos
+
+                    <input
+                        id="performance-photo-files"
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        required>
+                </label>
+
+                <div
+                    id="photo-upload-status">
+                </div>
+
+                <button
+                    type="submit"
+                    class="admin-btn">
+                    Upload Photos
+                </button>
+
+            </form>
+
+        </div>
+    `;
+
+    document.body.appendChild(
+        modal
+    );
+
+    modal.querySelector(
+        '.modal-close'
+    ).onclick = () =>
+        modal.remove();
+
+    modal.querySelector(
+        '#photo-upload-form'
+    ).onsubmit = async event => {
+
+        event.preventDefault();
+
+        const input =
+            document.querySelector(
+                '#performance-photo-files'
+            );
+
+        const files =
+            [...input.files];
+
+        if (!files.length) {
+            return;
+        }
+
+        const status =
+            document.querySelector(
+                '#photo-upload-status'
+            );
+
+        status.textContent =
+            `Uploading 0/${files.length}...`;
+
+        try {
+
+            for (
+                let i = 0;
+                i < files.length;
+                i++
+            ) {
+
+                const file =
+                    files[i];
+
+                const formData =
+                    new FormData();
+
+                formData.append(
+                    'image',
+                    file
+                );
+
+                const uploadResponse =
+                    await fetch(
+                        '/api/upload',
+                        {
+                            method: 'POST',
+                            credentials:
+                                'same-origin',
+                            body:
+                                formData
+                        }
+                    );
+
+                const uploadData =
+                    await uploadResponse.json();
+
+                if (
+                    !uploadResponse.ok
+                ) {
+                    throw new Error(
+                        uploadData.error ||
+                        'Upload failed'
+                    );
+                }
+
+                await api(
+                    `/api/admin/performances/${performanceId}/photos`,
+                    {
+                        method: 'POST',
+                        body:
+                            JSON.stringify({
+                                image:
+                                    uploadData.url,
+
+                                caption:
+                                    '',
+
+                                sort_order:
+                                    i
+                            })
+                    }
+                );
+
+                status.textContent =
+                    `Uploading ${
+                        i + 1
+                    }/${files.length}...`;
+            }
+
+            modal.remove();
+
+            showMessage(
+                `${files.length} photo(s) uploaded successfully.`
+            );
+
+            loadPerformances();
+
+        } catch (error) {
+
+            status.textContent =
+                error.message;
+
+            showMessage(
+                error.message,
+                'error'
+            );
+        }
+    };
+}
+
+// ==================================================
+// DELETE PERFORMANCE PHOTO
+// ==================================================
+
+async function deletePerformancePhoto(
+    photoId
+) {
+
+    if (
+        !confirm(
+            'Delete this photo?'
+        )
+    ) {
+        return;
+    }
+
+    try {
+
+        await api(
+            `/api/admin/performance-photos/${photoId}`,
+            {
+                method: 'DELETE'
+            }
+        );
+
+        showMessage(
+            'Photo deleted.'
+        );
+
+        loadPerformances();
+
+    } catch (error) {
+
+        showMessage(
+            error.message,
+            'error'
+        );
+    }
+}
+
+// ==================================================
+// SAVE CONTENT BUTTON
+// ==================================================
+
+document.addEventListener(
+    'click',
+    event => {
+
+        if (
+            event.target.closest(
+                '[data-save-content]'
+            )
+        ) {
+            saveContent();
+        }
+    }
+);
+
+// ==================================================
+// INITIALIZATION
+// ==================================================
+
+document.addEventListener(
+    'DOMContentLoaded',
+    () => {
+
+        setupNavigation();
+
+        checkAuth();
+
+        // Open dashboard initially
+        const dashboardButton =
+            document.querySelector(
+                '[data-view="dashboard"]'
+            );
+
+        if (dashboardButton) {
+            dashboardButton.classList.add(
+                'active'
+            );
+        }
+    }
+);
