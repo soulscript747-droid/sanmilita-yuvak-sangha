@@ -1,3 +1,7 @@
+// ==================================================
+// SANMILITA YUVAK SANGHA - SERVER
+// ==================================================
+
 require('dotenv').config();
 
 const express = require('express');
@@ -10,223 +14,157 @@ const fs = require('fs');
 
 const app = express();
 
-// --------------------------------------------------
-// PORT
-// --------------------------------------------------
-
 const PORT = process.env.PORT || 3000;
+const HOST = '0.0.0.0';
 
-// --------------------------------------------------
-// DIRECTORIES
-// --------------------------------------------------
+// ==================================================
+// PATHS
+// ==================================================
 
-const DATA_DIR = path.join(__dirname, 'data');
-const UPLOAD_DIR = path.join(DATA_DIR, 'uploads');
+const ROOT = __dirname;
+const UPLOAD_DIR = path.join(ROOT, 'uploads');
 
-fs.mkdirSync(DATA_DIR, { recursive: true });
-fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+if (!fs.existsSync(UPLOAD_DIR)) {
+    fs.mkdirSync(UPLOAD_DIR, {
+        recursive: true
+    });
+}
 
-// --------------------------------------------------
+// ==================================================
 // DATABASE
-// --------------------------------------------------
+// ==================================================
 
 const db = new Database(
-    path.join(DATA_DIR, 'site.db')
+    path.join(ROOT, 'database.db')
 );
 
 db.pragma('journal_mode = WAL');
 
+// ==================================================
+// TABLES
+// ==================================================
+
 db.exec(`
-CREATE TABLE IF NOT EXISTS admins(
-    id INTEGER PRIMARY KEY,
-    email TEXT UNIQUE,
-    password_hash TEXT
-);
+    CREATE TABLE IF NOT EXISTS admins (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        email TEXT UNIQUE NOT NULL,
+        password TEXT NOT NULL
+    );
 
-CREATE TABLE IF NOT EXISTS content(
-    key TEXT PRIMARY KEY,
-    value TEXT
-);
+    CREATE TABLE IF NOT EXISTS content (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        key TEXT UNIQUE NOT NULL,
+        value TEXT DEFAULT ''
+    );
 
-CREATE TABLE IF NOT EXISTS events(
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT,
-    date TEXT,
-    time TEXT,
-    venue TEXT,
-    description TEXT,
-    category TEXT,
-    status TEXT,
-    poster TEXT
-);
+    CREATE TABLE IF NOT EXISTS events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT DEFAULT '',
+        date TEXT DEFAULT '',
+        time TEXT DEFAULT '',
+        venue TEXT DEFAULT '',
+        description TEXT DEFAULT '',
+        category TEXT DEFAULT '',
+        status TEXT DEFAULT '',
+        poster TEXT DEFAULT ''
+    );
 
-CREATE TABLE IF NOT EXISTS gallery(
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    album TEXT,
-    caption TEXT,
-    category TEXT,
-    image TEXT
-);
+    CREATE TABLE IF NOT EXISTS gallery (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        album TEXT DEFAULT '',
+        caption TEXT DEFAULT '',
+        category TEXT DEFAULT '',
+        image TEXT DEFAULT ''
+    );
 
-CREATE TABLE IF NOT EXISTS team(
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT,
-    designation TEXT,
-    bio TEXT,
-    photo TEXT
-);
+    CREATE TABLE IF NOT EXISTS team (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT DEFAULT '',
+        designation TEXT DEFAULT '',
+        bio TEXT DEFAULT '',
+        photo TEXT DEFAULT ''
+    );
 
-CREATE TABLE IF NOT EXISTS news(
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    title_as TEXT,
-    title_en TEXT,
-    date TEXT,
-    category TEXT,
-    author TEXT,
-    image TEXT,
-    body_as TEXT,
-    body_en TEXT,
-    published INTEGER DEFAULT 0
-);
+    CREATE TABLE IF NOT EXISTS news (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title_as TEXT DEFAULT '',
+        title_en TEXT DEFAULT '',
+        date TEXT DEFAULT '',
+        category TEXT DEFAULT '',
+        author TEXT DEFAULT '',
+        image TEXT DEFAULT '',
+        body_as TEXT DEFAULT '',
+        body_en TEXT DEFAULT '',
+        published INTEGER DEFAULT 1
+    );
 
-CREATE TABLE IF NOT EXISTS memberships(
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    full_name TEXT,
-    age TEXT,
-    phone TEXT,
-    email TEXT,
-    address TEXT,
-    interest TEXT,
-    skills TEXT,
-    why TEXT,
-    status TEXT DEFAULT 'New',
-    created_at TEXT
-);
+    CREATE TABLE IF NOT EXISTS memberships (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT DEFAULT '',
+        age TEXT DEFAULT '',
+        phone TEXT DEFAULT '',
+        email TEXT DEFAULT '',
+        address TEXT DEFAULT '',
+        interests TEXT DEFAULT '',
+        skills TEXT DEFAULT '',
+        reason TEXT DEFAULT '',
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
 
-CREATE TABLE IF NOT EXISTS performances(
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    title TEXT NOT NULL,
-    description TEXT DEFAULT '',
-    sort_order INTEGER DEFAULT 0
-);
+    CREATE TABLE IF NOT EXISTS performances (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT NOT NULL,
+        description TEXT DEFAULT '',
+        sort_order INTEGER DEFAULT 0
+    );
 
-CREATE TABLE IF NOT EXISTS performance_photos(
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    performance_id INTEGER NOT NULL,
-    image TEXT NOT NULL,
-    caption TEXT DEFAULT '',
-    sort_order INTEGER DEFAULT 0
-);
+    CREATE TABLE IF NOT EXISTS performance_photos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        performance_id INTEGER NOT NULL,
+        image TEXT NOT NULL,
+        caption TEXT DEFAULT '',
+        sort_order INTEGER DEFAULT 0
+    );
 `);
 
-// --------------------------------------------------
+// ==================================================
 // ADMIN ACCOUNT
-// --------------------------------------------------
+// ==================================================
 
 const adminEmail =
     process.env.ADMIN_EMAIL ||
     'sanmilitayuvaksangha@gmail.com';
 
-const adminPass =
+const adminPassword =
     process.env.ADMIN_PASSWORD ||
     'vauna717171';
 
-const existingAdmin = db
-    .prepare(`
-        SELECT id
-        FROM admins
-        WHERE email = ?
-    `)
-    .get(adminEmail);
+const existingAdmin =
+    db.prepare(
+        'SELECT id FROM admins WHERE email = ?'
+    ).get(adminEmail);
 
-if (!existingAdmin && adminPass) {
+if (!existingAdmin) {
 
-    const hash = bcrypt.hashSync(
-        adminPass,
-        12
-    );
+    const hashedPassword =
+        bcrypt.hashSync(
+            adminPassword,
+            10
+        );
 
     db.prepare(`
-        INSERT INTO admins(
-            email,
-            password_hash
-        )
-        VALUES(?, ?)
+        INSERT INTO admins
+        (email, password)
+        VALUES (?, ?)
     `).run(
         adminEmail,
-        hash
+        hashedPassword
     );
 }
 
-// --------------------------------------------------
-// DEFAULT WEBSITE CONTENT
-// --------------------------------------------------
-
-const defaults = {
-
-    hero_as:
-        'সন্মিলিত যুৱক সংঘ, তেজপুৰ',
-
-    hero_en:
-        'Sanmilita Yuvak Sangha, Tezpur',
-
-    hero_sub:
-        'দুজনা গুৰুৰ সৃষ্টি জীয়াই ৰখা আমাৰ এটি প্ৰচেষ্টা। ২০২৩ চনৰ পৰা আজিলৈকে এই সংকল্পক হৃদয়ত ধাৰণ কৰি আমি একেলগে আগবাঢ়ি আহিছোঁ।',
-
-    identity:
-        'অসমীয়া সংস্কৃতি জীয়াই ৰখা আমাৰ প্ৰধান উদ্দেশ্য। ২০২৩ চনৰ পৰা আজিলৈকে এই সংকল্পক হৃদয়ত ধাৰণ কৰি আমি একেলগে আগবাঢ়ি আহিছোঁ।',
-
-    about_start:
-        '২০২৩ চনত ১০–১৫ জন যুৱক একত্ৰিত হৈ এক আলোচনাত মিলিত হৈছিলোঁ—তেজপুৰ তথা অসমৰ চহকী সংস্কৃতি আৰু দুজনা গুৰুৰ অমূল্য সৃষ্টিক কেনেদৰে জীয়াই ৰাখি আগন্তুক প্ৰজন্মৰ মাজলৈ লৈ যাব পাৰি। সেই চিন্তা আৰু সংকল্পৰ পৰাই আমি একত্ৰিতভাৱে এখন ভাওঁনা অনুষ্ঠিত কৰাৰ সিদ্ধান্ত গ্ৰহণ কৰোঁ।',
-
-    about_mission:
-        'ভাওঁনা, দিহানাম, সত্ৰীয়া আৰু অসমৰ ঐতিহ্যবাহী শিল্পকলাৰ প্ৰচাৰ-প্ৰসাৰ আৰু নতুন প্ৰজন্মৰ মাজত আগবঢ়াই নিয়া।',
-
-    about_vision:
-        'সংস্কৃতিৰ শিপা অটুট ৰাখি যুৱ শক্তিক একত্ৰিত কৰা এক সক্ৰিয়, দায়বদ্ধ আৰু সৃষ্টিশীল মঞ্চ।',
-
-    contact_address:
-        'B.P TINIALI,TEZPUR,ASSAM',
-
-    contact_phone:
-        '9394908170,6001291820',
-
-    contact_email:
-        'sanmilitayuvaksangha@gmail.com',
-
-    facebook:
-        '',
-
-    instagram:
-        '',
-
-    youtube:
-        '',
-
-    whatsapp:
-        '919394908170'
-};
-
-for (
-    const [key, value]
-    of Object.entries(defaults)
-) {
-
-    db.prepare(`
-        INSERT OR IGNORE INTO content(
-            key,
-            value
-        )
-        VALUES(?, ?)
-    `).run(
-        key,
-        value
-    );
-}
-
-// --------------------------------------------------
-// EXPRESS
-// --------------------------------------------------
+// ==================================================
+// MIDDLEWARE
+// ==================================================
 
 app.use(
     express.json({
@@ -241,46 +179,29 @@ app.use(
     })
 );
 
-// --------------------------------------------------
-// SESSION
-// --------------------------------------------------
-
 app.use(
     session({
-
         secret:
             process.env.SESSION_SECRET ||
             'CHANGE_THIS_SECRET',
-
         resave: false,
-
         saveUninitialized: false,
-
         cookie: {
-
             httpOnly: true,
-
             sameSite: 'lax',
-
             secure: false,
-
             maxAge:
-                8 * 60 * 60 * 1000
+                1000 * 60 * 60 * 24 * 7
         }
     })
 );
 
-// --------------------------------------------------
+// ==================================================
 // STATIC FILES
-// --------------------------------------------------
+// ==================================================
 
 app.use(
-    express.static(
-        __dirname,
-        {
-            index: false
-        }
-    )
+    express.static(ROOT)
 );
 
 app.use(
@@ -288,37 +209,119 @@ app.use(
     express.static(UPLOAD_DIR)
 );
 
-// --------------------------------------------------
-// PAGES
-// --------------------------------------------------
+// ==================================================
+// MULTER UPLOAD
+// ==================================================
 
-app.get('/', (req, res) => {
+const storage =
+    multer.diskStorage({
 
-    res.sendFile(
-        path.join(
-            __dirname,
-            'index.html'
-        )
-    );
-});
+        destination:
+            function (
+                req,
+                file,
+                cb
+            ) {
 
-app.get('/admin', (req, res) => {
+                cb(
+                    null,
+                    UPLOAD_DIR
+                );
+            },
 
-    res.sendFile(
-        path.join(
-            __dirname,
-            'admin.html'
-        )
-    );
-});
+        filename:
+            function (
+                req,
+                file,
+                cb
+            ) {
 
-// --------------------------------------------------
-// AUTHENTICATION
-// --------------------------------------------------
+                const ext =
+                    path.extname(
+                        file.originalname
+                    ).toLowerCase();
 
-function auth(req, res, next) {
+                const name =
+                    Date.now() +
+                    '-' +
+                    Math.random()
+                        .toString(36)
+                        .substring(2, 10) +
+                    ext;
 
-    if (req.session.admin) {
+                cb(
+                    null,
+                    name
+                );
+            }
+    });
+
+const upload =
+    multer({
+
+        storage,
+
+        limits: {
+            fileSize:
+                10 * 1024 * 1024
+        },
+
+        fileFilter:
+            function (
+                req,
+                file,
+                cb
+            ) {
+
+                const allowed =
+                    [
+                        '.jpg',
+                        '.jpeg',
+                        '.png',
+                        '.webp',
+                        '.gif'
+                    ];
+
+                const ext =
+                    path.extname(
+                        file.originalname
+                    ).toLowerCase();
+
+                if (
+                    allowed.includes(ext)
+                ) {
+
+                    cb(
+                        null,
+                        true
+                    );
+
+                } else {
+
+                    cb(
+                        new Error(
+                            'Only image files are allowed.'
+                        )
+                    );
+                }
+            }
+    });
+
+// ==================================================
+// AUTH MIDDLEWARE
+// ==================================================
+
+function requireAdmin(
+    req,
+    res,
+    next
+) {
+
+    if (
+        req.session &&
+        req.session.admin
+    ) {
+
         return next();
     }
 
@@ -327,329 +330,59 @@ function auth(req, res, next) {
     });
 }
 
-// --------------------------------------------------
-// IMAGE UPLOAD
-// --------------------------------------------------
-
-const upload = multer({
-
-    storage: multer.diskStorage({
-
-        destination: (
-            req,
-            file,
-            cb
-        ) => {
-
-            cb(
-                null,
-                UPLOAD_DIR
-            );
-        },
-
-        filename: (
-            req,
-            file,
-            cb
-        ) => {
-
-            const extension =
-                path
-                    .extname(
-                        file.originalname
-                    )
-                    .toLowerCase();
-
-            const allowedExtensions = [
-                '.jpg',
-                '.jpeg',
-                '.png',
-                '.webp',
-                '.gif'
-            ];
-
-            if (
-                !allowedExtensions
-                    .includes(extension)
-            ) {
-
-                return cb(
-                    new Error(
-                        'Only image files are allowed'
-                    )
-                );
-            }
-
-            const uniqueName =
-                Date.now() +
-                '-' +
-                Math.random()
-                    .toString(36)
-                    .substring(2, 10) +
-                extension;
-
-            cb(
-                null,
-                uniqueName
-            );
-        }
-    }),
-
-    limits: {
-        fileSize:
-            10 * 1024 * 1024
-    },
-
-    fileFilter: (
-        req,
-        file,
-        cb
-    ) => {
-
-        if (
-            file.mimetype &&
-            file.mimetype.startsWith(
-                'image/'
-            )
-        ) {
-
-            cb(null, true);
-
-        } else {
-
-            cb(
-                new Error(
-                    'Only image files are allowed'
-                )
-            );
-        }
-    }
-});
-
-// --------------------------------------------------
-// PUBLIC CONTENT API
-// --------------------------------------------------
+// ==================================================
+// HOME
+// ==================================================
 
 app.get(
-    '/api/content',
+    '/',
     (req, res) => {
 
-        const rows = db
-            .prepare(`
-                SELECT key, value
-                FROM content
-            `)
-            .all();
-
-        res.json(
-            Object.fromEntries(
-                rows.map(
-                    row => [
-                        row.key,
-                        row.value
-                    ]
-                )
+        res.sendFile(
+            path.join(
+                ROOT,
+                'index.html'
             )
         );
     }
 );
 
-// --------------------------------------------------
-// MEMBERSHIP
-// --------------------------------------------------
-
-app.post(
-    '/api/membership',
+app.get(
+    '/admin',
     (req, res) => {
 
-        const r = req.body;
-
-        db.prepare(`
-            INSERT INTO memberships(
-                full_name,
-                age,
-                phone,
-                email,
-                address,
-                interest,
-                skills,
-                why,
-                created_at
+        res.sendFile(
+            path.join(
+                ROOT,
+                'admin.html'
             )
-            VALUES(
-                ?, ?, ?, ?, ?,
-                ?, ?, ?,
-                datetime('now')
-            )
-        `).run(
-
-            r.full_name || '',
-            r.age || '',
-            r.phone || '',
-            r.email || '',
-            r.address || '',
-            r.interest || '',
-            r.skills || '',
-            r.why || ''
         );
-
-        res.json({
-            ok: true
-        });
     }
 );
 
-// --------------------------------------------------
-// EVENTS
-// --------------------------------------------------
-
-app.get(
-    '/api/events',
-    (req, res) => {
-
-        const events = db
-            .prepare(`
-                SELECT *
-                FROM events
-                ORDER BY date
-            `)
-            .all();
-
-        res.json(events);
-    }
-);
-
-// --------------------------------------------------
-// GALLERY
-// --------------------------------------------------
-
-app.get(
-    '/api/gallery',
-    (req, res) => {
-
-        const gallery = db
-            .prepare(`
-                SELECT *
-                FROM gallery
-                ORDER BY id DESC
-            `)
-            .all();
-
-        res.json(gallery);
-    }
-);
-
-// --------------------------------------------------
-// TEAM
-// --------------------------------------------------
-
-app.get(
-    '/api/team',
-    (req, res) => {
-
-        const team = db
-            .prepare(`
-                SELECT *
-                FROM team
-                ORDER BY id
-            `)
-            .all();
-
-        res.json(team);
-    }
-);
-
-// --------------------------------------------------
-// NEWS
-// --------------------------------------------------
-
-app.get(
-    '/api/news',
-    (req, res) => {
-
-        const news = db
-            .prepare(`
-                SELECT *
-                FROM news
-                WHERE published = 1
-                ORDER BY date DESC
-            `)
-            .all();
-
-        res.json(news);
-    }
-);
-
-// --------------------------------------------------
-// FEATURED PERFORMANCES - PUBLIC
-// --------------------------------------------------
-
-app.get(
-    '/api/performances',
-    (req, res) => {
-
-        try {
-
-            const performances =
-                db.prepare(`
-                    SELECT *
-                    FROM performances
-                    ORDER BY
-                        sort_order ASC,
-                        id ASC
-                `).all();
-
-            const photos =
-                db.prepare(`
-                    SELECT *
-                    FROM performance_photos
-                    ORDER BY
-                        sort_order ASC,
-                        id ASC
-                `).all();
-
-            const result =
-                performances.map(
-                    performance => ({
-
-                        ...performance,
-
-                        photos:
-                            photos.filter(
-                                photo =>
-                                    photo.performance_id ===
-                                    performance.id
-                            )
-                    })
-                );
-
-            res.json(result);
-
-        } catch (error) {
-
-            console.error(error);
-
-            res.status(500).json({
-                error:
-                    'Failed to load performances'
-            });
-        }
-    }
-);
-
-// --------------------------------------------------
-// LOGIN
-// --------------------------------------------------
+// ==================================================
+// AUTH API
+// ==================================================
 
 app.post(
     '/api/login',
     (req, res) => {
 
-        const email =
-            req.body.email || '';
+        const {
+            email,
+            password
+        } = req.body;
 
-        const password =
-            req.body.password || '';
+        if (
+            !email ||
+            !password
+        ) {
+
+            return res.status(400).json({
+                error:
+                    'Email and password are required.'
+            });
+        }
 
         const admin =
             db.prepare(`
@@ -658,36 +391,39 @@ app.post(
                 WHERE email = ?
             `).get(email);
 
-        if (
-            admin &&
-            bcrypt.compareSync(
-                password,
-                admin.password_hash
-            )
-        ) {
+        if (!admin) {
 
-            req.session.admin = {
-
-                id: admin.id,
-
-                email: admin.email
-            };
-
-            return res.json({
-                ok: true
+            return res.status(401).json({
+                error:
+                    'Invalid email or password.'
             });
         }
 
-        res.status(401).json({
-            error:
-                'Invalid credentials'
+        const valid =
+            bcrypt.compareSync(
+                password,
+                admin.password
+            );
+
+        if (!valid) {
+
+            return res.status(401).json({
+                error:
+                    'Invalid email or password.'
+            });
+        }
+
+        req.session.admin = {
+            id: admin.id,
+            email: admin.email
+        };
+
+        res.json({
+            ok: true,
+            email: admin.email
         });
     }
 );
-
-// --------------------------------------------------
-// LOGOUT
-// --------------------------------------------------
 
 app.post(
     '/api/logout',
@@ -704,13 +440,9 @@ app.post(
     }
 );
 
-// --------------------------------------------------
-// CURRENT ADMIN
-// --------------------------------------------------
-
 app.get(
     '/api/me',
-    auth,
+    requireAdmin,
     (req, res) => {
 
         res.json(
@@ -719,748 +451,69 @@ app.get(
     }
 );
 
-// --------------------------------------------------
-// ADMIN DATA
-// --------------------------------------------------
+// ==================================================
+// CONTENT API
+// ==================================================
 
 app.get(
-    '/api/admin/:type',
-    auth,
+    '/api/content',
     (req, res) => {
 
-        const allowed = {
-
-            events: 'events',
-
-            gallery: 'gallery',
-
-            team: 'team',
-
-            news: 'news',
-
-            memberships:
-                'memberships'
-        };
-
-        const table =
-            allowed[
-                req.params.type
-            ];
-
-        if (!table) {
-
-            return res.status(400).json({
-                error:
-                    'Invalid type'
-            });
-        }
-
-        const rows = db
-            .prepare(`
-                SELECT *
-                FROM ${table}
-                ORDER BY id DESC
-            `)
-            .all();
-
-        res.json(rows);
-    }
-);
-
-// --------------------------------------------------
-// ADMIN FEATURED PERFORMANCES
-// --------------------------------------------------
-
-app.get(
-    '/api/admin/performances',
-    auth,
-    (req, res) => {
-
-        try {
-
-            const performances =
-                db.prepare(`
-                    SELECT *
-                    FROM performances
-                    ORDER BY
-                        sort_order ASC,
-                        id ASC
-                `).all();
-
-            const photos =
-                db.prepare(`
-                    SELECT *
-                    FROM performance_photos
-                    ORDER BY
-                        sort_order ASC,
-                        id ASC
-                `).all();
-
-            const result =
-                performances.map(
-                    performance => ({
-
-                        ...performance,
-
-                        photos:
-                            photos.filter(
-                                photo =>
-                                    photo.performance_id ===
-                                    performance.id
-                            )
-                    })
-                );
-
-            res.json(result);
-
-        } catch (error) {
-
-            console.error(error);
-
-            res.status(500).json({
-                error:
-                    'Failed to load performances'
-            });
-        }
-    }
-);
-
-// --------------------------------------------------
-// CREATE PERFORMANCE
-// --------------------------------------------------
-
-app.post(
-    '/api/admin/performances',
-    auth,
-    (req, res) => {
-
-        try {
-
-            const title =
-                (req.body.title || '')
-                    .trim();
-
-            const description =
-                req.body.description || '';
-
-            const sortOrder =
-                Number(
-                    req.body.sort_order
-                ) || 0;
-
-            if (!title) {
-
-                return res.status(400).json({
-                    error:
-                        'Title is required'
-                });
-            }
-
-            const result =
-                db.prepare(`
-                    INSERT INTO performances(
-                        title,
-                        description,
-                        sort_order
-                    )
-                    VALUES(?, ?, ?)
-                `).run(
-                    title,
-                    description,
-                    sortOrder
-                );
-
-            res.json({
-
-                ok: true,
-
-                id:
-                    result.lastInsertRowid
-            });
-
-        } catch (error) {
-
-            console.error(error);
-
-            res.status(500).json({
-                error:
-                    'Failed to create performance'
-            });
-        }
-    }
-);
-
-// --------------------------------------------------
-// UPDATE PERFORMANCE
-// --------------------------------------------------
-
-app.put(
-    '/api/admin/performances/:id',
-    auth,
-    (req, res) => {
-
-        try {
-
-            const title =
-                (req.body.title || '')
-                    .trim();
-
-            const description =
-                req.body.description || '';
-
-            const sortOrder =
-                Number(
-                    req.body.sort_order
-                ) || 0;
-
-            if (!title) {
-
-                return res.status(400).json({
-                    error:
-                        'Title is required'
-                });
-            }
-
-            const result =
-                db.prepare(`
-                    UPDATE performances
-                    SET
-                        title = ?,
-                        description = ?,
-                        sort_order = ?
-                    WHERE id = ?
-                `).run(
-                    title,
-                    description,
-                    sortOrder,
-                    req.params.id
-                );
-
-            if (
-                result.changes === 0
-            ) {
-
-                return res.status(404).json({
-                    error:
-                        'Performance not found'
-                });
-            }
-
-            res.json({
-                ok: true
-            });
-
-        } catch (error) {
-
-            console.error(error);
-
-            res.status(500).json({
-                error:
-                    'Failed to update performance'
-            });
-        }
-    }
-);
-
-// --------------------------------------------------
-// DELETE PERFORMANCE
-// --------------------------------------------------
-
-app.delete(
-    '/api/admin/performances/:id',
-    auth,
-    (req, res) => {
-
-        try {
-
-            const id =
-                req.params.id;
-
+        const rows =
             db.prepare(`
-                DELETE FROM
-                    performance_photos
-                WHERE performance_id = ?
-            `).run(id);
+                SELECT key, value
+                FROM content
+            `).all();
 
-            db.prepare(`
-                DELETE FROM performances
-                WHERE id = ?
-            `).run(id);
+        const result = {};
 
-            res.json({
-                ok: true
-            });
+        rows.forEach(row => {
 
-        } catch (error) {
+            result[row.key] =
+                row.value;
 
-            console.error(error);
+        });
 
-            res.status(500).json({
-                error:
-                    'Failed to delete performance'
-            });
-        }
+        res.json(result);
     }
 );
-
-// --------------------------------------------------
-// ADD PERFORMANCE PHOTO
-// --------------------------------------------------
-
-app.post(
-    '/api/admin/performances/:id/photos',
-    auth,
-    (req, res) => {
-
-        try {
-
-            const image =
-                req.body.image || '';
-
-            const caption =
-                req.body.caption || '';
-
-            const sortOrder =
-                Number(
-                    req.body.sort_order
-                ) || 0;
-
-            if (!image) {
-
-                return res.status(400).json({
-                    error:
-                        'Image is required'
-                });
-            }
-
-            const performance =
-                db.prepare(`
-                    SELECT id
-                    FROM performances
-                    WHERE id = ?
-                `).get(
-                    req.params.id
-                );
-
-            if (!performance) {
-
-                return res.status(404).json({
-                    error:
-                        'Performance not found'
-                });
-            }
-
-            const result =
-                db.prepare(`
-                    INSERT INTO performance_photos(
-                        performance_id,
-                        image,
-                        caption,
-                        sort_order
-                    )
-                    VALUES(?, ?, ?, ?)
-                `).run(
-                    req.params.id,
-                    image,
-                    caption,
-                    sortOrder
-                );
-
-            res.json({
-
-                ok: true,
-
-                id:
-                    result.lastInsertRowid
-            });
-
-        } catch (error) {
-
-            console.error(error);
-
-            res.status(500).json({
-                error:
-                    'Failed to add photo'
-            });
-        }
-    }
-);
-
-// --------------------------------------------------
-// UPDATE PERFORMANCE PHOTO
-// --------------------------------------------------
-
-app.put(
-    '/api/admin/performance-photos/:id',
-    auth,
-    (req, res) => {
-
-        try {
-
-            const caption =
-                req.body.caption || '';
-
-            const sortOrder =
-                Number(
-                    req.body.sort_order
-                ) || 0;
-
-            const result =
-                db.prepare(`
-                    UPDATE performance_photos
-                    SET
-                        caption = ?,
-                        sort_order = ?
-                    WHERE id = ?
-                `).run(
-                    caption,
-                    sortOrder,
-                    req.params.id
-                );
-
-            if (
-                result.changes === 0
-            ) {
-
-                return res.status(404).json({
-                    error:
-                        'Photo not found'
-                });
-            }
-
-            res.json({
-                ok: true
-            });
-
-        } catch (error) {
-
-            console.error(error);
-
-            res.status(500).json({
-                error:
-                    'Failed to update photo'
-            });
-        }
-    }
-);
-
-// --------------------------------------------------
-// DELETE PERFORMANCE PHOTO
-// --------------------------------------------------
-
-app.delete(
-    '/api/admin/performance-photos/:id',
-    auth,
-    (req, res) => {
-
-        try {
-
-            const result =
-                db.prepare(`
-                    DELETE FROM
-                        performance_photos
-                    WHERE id = ?
-                `).run(
-                    req.params.id
-                );
-
-            if (
-                result.changes === 0
-            ) {
-
-                return res.status(404).json({
-                    error:
-                        'Photo not found'
-                });
-            }
-
-            res.json({
-                ok: true
-            });
-
-        } catch (error) {
-
-            console.error(error);
-
-            res.status(500).json({
-                error:
-                    'Failed to delete photo'
-            });
-        }
-    }
-);
-
-// --------------------------------------------------
-// UPDATE WEBSITE CONTENT
-// --------------------------------------------------
 
 app.put(
     '/api/content',
-    auth,
+    requireAdmin,
     (req, res) => {
 
-        try {
+        const data =
+            req.body || {};
 
-            const statement =
-                db.prepare(`
-                    INSERT INTO content(
-                        key,
-                        value
-                    )
-                    VALUES(?, ?)
-                    ON CONFLICT(key)
-                    DO UPDATE SET
-                        value =
-                            excluded.value
-                `);
+        const statement =
+            db.prepare(`
+                INSERT INTO content
+                (key, value)
+                VALUES (?, ?)
+                ON CONFLICT(key)
+                DO UPDATE SET value = excluded.value
+            `);
 
-            const transaction =
-                db.transaction(data => {
+        const transaction =
+            db.transaction(() => {
 
-                    for (
-                        const [
-                            key,
-                            value
-                        ]
-                        of Object.entries(data)
-                    ) {
+                Object.entries(
+                    data
+                ).forEach(
+                    ([key, value]) => {
 
                         statement.run(
                             key,
-                            String(value)
+                            String(
+                                value ?? ''
+                            )
                         );
                     }
-                });
-
-            transaction(req.body);
-
-            res.json({
-                ok: true
+                );
             });
 
-        } catch (error) {
-
-            console.error(error);
-
-            res.status(500).json({
-                error:
-                    'Failed to update content'
-            });
-        }
-    }
-);
-
-// --------------------------------------------------
-// IMAGE UPLOAD
-// --------------------------------------------------
-
-app.post(
-    '/api/upload',
-    auth,
-    upload.single('image'),
-    (req, res) => {
-
-        if (!req.file) {
-
-            return res.status(400).json({
-                error:
-                    'No image uploaded'
-            });
-        }
-
-        res.json({
-
-            ok: true,
-
-            url:
-                '/uploads/' +
-                req.file.filename
-        });
-    }
-);
-
-// --------------------------------------------------
-// ADD DATA
-// --------------------------------------------------
-
-app.post(
-    '/api/:type',
-    auth,
-    (req, res) => {
-
-        const maps = {
-
-            events: [
-                'name',
-                'date',
-                'time',
-                'venue',
-                'description',
-                'category',
-                'status',
-                'poster'
-            ],
-
-            gallery: [
-                'album',
-                'caption',
-                'category',
-                'image'
-            ],
-
-            team: [
-                'name',
-                'designation',
-                'bio',
-                'photo'
-            ],
-
-            news: [
-                'title_as',
-                'title_en',
-                'date',
-                'category',
-                'author',
-                'image',
-                'body_as',
-                'body_en',
-                'published'
-            ]
-        };
-
-        const type =
-            req.params.type;
-
-        const fields =
-            maps[type];
-
-        if (!fields) {
-
-            return res.status(400).json({
-                error:
-                    'Invalid type'
-            });
-        }
-
-        const placeholders =
-            fields
-                .map(() => '?')
-                .join(',');
-
-        const sql = `
-            INSERT INTO ${type}
-            (${fields.join(',')})
-            VALUES(${placeholders})
-        `;
-
-        const values =
-            fields.map(
-                field =>
-                    req.body[field] ?? ''
-            );
-
-        const result =
-            db
-                .prepare(sql)
-                .run(...values);
-
-        res.json({
-
-            id:
-                result.lastInsertRowid
-        });
-    }
-);
-
-// --------------------------------------------------
-// UPDATE DATA
-// --------------------------------------------------
-
-app.put(
-    '/api/:type/:id',
-    auth,
-    (req, res) => {
-
-        const maps = {
-
-            events: [
-                'name',
-                'date',
-                'time',
-                'venue',
-                'description',
-                'category',
-                'status',
-                'poster'
-            ],
-
-            gallery: [
-                'album',
-                'caption',
-                'category',
-                'image'
-            ],
-
-            team: [
-                'name',
-                'designation',
-                'bio',
-                'photo'
-            ],
-
-            news: [
-                'title_as',
-                'title_en',
-                'date',
-                'category',
-                'author',
-                'image',
-                'body_as',
-                'body_en',
-                'published'
-            ]
-        };
-
-        const type =
-            req.params.type;
-
-        const fields =
-            maps[type];
-
-        if (!fields) {
-
-            return res.status(400).json({
-                error:
-                    'Invalid type'
-            });
-        }
-
-        const setters =
-            fields
-                .map(
-                    field =>
-                        `${field} = ?`
-                )
-                .join(',');
-
-        const sql = `
-            UPDATE ${type}
-            SET ${setters}
-            WHERE id = ?
-        `;
-
-        const values =
-            fields.map(
-                field =>
-                    req.body[field] ?? ''
-            );
-
-        values.push(
-            req.params.id
-        );
-
-        db.prepare(sql)
-            .run(...values);
+        transaction();
 
         res.json({
             ok: true
@@ -1468,38 +521,906 @@ app.put(
     }
 );
 
-// --------------------------------------------------
-// DELETE DATA
-// --------------------------------------------------
+// ==================================================
+// PUBLIC EVENTS
+// ==================================================
 
-app.delete(
-    '/api/:type/:id',
-    auth,
+app.get(
+    '/api/events',
     (req, res) => {
 
-        const allowed = [
-            'events',
-            'gallery',
-            'team',
-            'news',
-            'memberships'
-        ];
+        const rows =
+            db.prepare(`
+                SELECT *
+                FROM events
+                ORDER BY id DESC
+            `).all();
 
-        if (
-            !allowed.includes(
-                req.params.type
+        res.json(rows);
+    }
+);
+
+// ==================================================
+// PUBLIC GALLERY
+// ==================================================
+
+app.get(
+    '/api/gallery',
+    (req, res) => {
+
+        const rows =
+            db.prepare(`
+                SELECT *
+                FROM gallery
+                ORDER BY id DESC
+            `).all();
+
+        res.json(rows);
+    }
+);
+
+// ==================================================
+// PUBLIC TEAM
+// ==================================================
+
+app.get(
+    '/api/team',
+    (req, res) => {
+
+        const rows =
+            db.prepare(`
+                SELECT *
+                FROM team
+                ORDER BY id ASC
+            `).all();
+
+        res.json(rows);
+    }
+);
+
+// ==================================================
+// PUBLIC NEWS
+// ==================================================
+
+app.get(
+    '/api/news',
+    (req, res) => {
+
+        const rows =
+            db.prepare(`
+                SELECT *
+                FROM news
+                WHERE published = 1
+                ORDER BY date DESC, id DESC
+            `).all();
+
+        res.json(rows);
+    }
+);
+
+// ==================================================
+// PUBLIC MEMBERSHIP
+// ==================================================
+
+app.post(
+    '/api/membership',
+    (req, res) => {
+
+        const data =
+            req.body || {};
+
+        db.prepare(`
+            INSERT INTO memberships
+            (
+                name,
+                age,
+                phone,
+                email,
+                address,
+                interests,
+                skills,
+                reason
             )
-        ) {
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+            data.name || '',
+            data.age || '',
+            data.phone || '',
+            data.email || '',
+            data.address || '',
+            data.interests || '',
+            data.skills || '',
+            data.reason || ''
+        );
+
+        res.json({
+            ok: true
+        });
+    }
+);
+
+// ==================================================
+// PUBLIC FEATURED PERFORMANCES
+// ==================================================
+
+app.get(
+    '/api/performances',
+    (req, res) => {
+
+        const performances =
+            db.prepare(`
+                SELECT *
+                FROM performances
+                ORDER BY sort_order ASC, id ASC
+            `).all();
+
+        const getPhotos =
+            db.prepare(`
+                SELECT *
+                FROM performance_photos
+                WHERE performance_id = ?
+                ORDER BY sort_order ASC, id ASC
+            `);
+
+        const result =
+            performances.map(
+                performance => {
+
+                    return {
+                        ...performance,
+                        photos:
+                            getPhotos.all(
+                                performance.id
+                            )
+                    };
+                }
+            );
+
+        res.json(result);
+    }
+);
+
+// ==================================================
+// ADMIN EVENTS
+// ==================================================
+
+app.get(
+    '/api/admin/events',
+    requireAdmin,
+    (req, res) => {
+
+        res.json(
+            db.prepare(
+                'SELECT * FROM events ORDER BY id DESC'
+            ).all()
+        );
+    }
+);
+
+app.post(
+    '/api/events',
+    requireAdmin,
+    (req, res) => {
+
+        const data =
+            req.body || {};
+
+        const result =
+            db.prepare(`
+                INSERT INTO events
+                (
+                    name,
+                    date,
+                    time,
+                    venue,
+                    description,
+                    category,
+                    status,
+                    poster
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            `).run(
+                data.name || '',
+                data.date || '',
+                data.time || '',
+                data.venue || '',
+                data.description || '',
+                data.category || '',
+                data.status || '',
+                data.poster || ''
+            );
+
+        res.json({
+            ok: true,
+            id: result.lastInsertRowid
+        });
+    }
+);
+
+app.put(
+    '/api/events/:id',
+    requireAdmin,
+    (req, res) => {
+
+        const data =
+            req.body || {};
+
+        db.prepare(`
+            UPDATE events
+            SET
+                name = ?,
+                date = ?,
+                time = ?,
+                venue = ?,
+                description = ?,
+                category = ?,
+                status = ?,
+                poster = ?
+            WHERE id = ?
+        `).run(
+            data.name || '',
+            data.date || '',
+            data.time || '',
+            data.venue || '',
+            data.description || '',
+            data.category || '',
+            data.status || '',
+            data.poster || '',
+            req.params.id
+        );
+
+        res.json({
+            ok: true
+        });
+    }
+);
+
+app.delete(
+    '/api/events/:id',
+    requireAdmin,
+    (req, res) => {
+
+        db.prepare(
+            'DELETE FROM events WHERE id = ?'
+        ).run(
+            req.params.id
+        );
+
+        res.json({
+            ok: true
+        });
+    }
+);
+
+// ==================================================
+// ADMIN GALLERY
+// ==================================================
+
+app.get(
+    '/api/admin/gallery',
+    requireAdmin,
+    (req, res) => {
+
+        res.json(
+            db.prepare(
+                'SELECT * FROM gallery ORDER BY id DESC'
+            ).all()
+        );
+    }
+);
+
+app.post(
+    '/api/gallery',
+    requireAdmin,
+    (req, res) => {
+
+        const data =
+            req.body || {};
+
+        const result =
+            db.prepare(`
+                INSERT INTO gallery
+                (
+                    album,
+                    caption,
+                    category,
+                    image
+                )
+                VALUES (?, ?, ?, ?)
+            `).run(
+                data.album || '',
+                data.caption || '',
+                data.category || '',
+                data.image || ''
+            );
+
+        res.json({
+            ok: true,
+            id: result.lastInsertRowid
+        });
+    }
+);
+
+app.put(
+    '/api/gallery/:id',
+    requireAdmin,
+    (req, res) => {
+
+        const data =
+            req.body || {};
+
+        db.prepare(`
+            UPDATE gallery
+            SET
+                album = ?,
+                caption = ?,
+                category = ?,
+                image = ?
+            WHERE id = ?
+        `).run(
+            data.album || '',
+            data.caption || '',
+            data.category || '',
+            data.image || '',
+            req.params.id
+        );
+
+        res.json({
+            ok: true
+        });
+    }
+);
+
+app.delete(
+    '/api/gallery/:id',
+    requireAdmin,
+    (req, res) => {
+
+        db.prepare(
+            'DELETE FROM gallery WHERE id = ?'
+        ).run(
+            req.params.id
+        );
+
+        res.json({
+            ok: true
+        });
+    }
+);
+
+// ==================================================
+// ADMIN TEAM
+// ==================================================
+
+app.get(
+    '/api/admin/team',
+    requireAdmin,
+    (req, res) => {
+
+        res.json(
+            db.prepare(
+                'SELECT * FROM team ORDER BY id ASC'
+            ).all()
+        );
+    }
+);
+
+app.post(
+    '/api/team',
+    requireAdmin,
+    (req, res) => {
+
+        const data =
+            req.body || {};
+
+        const result =
+            db.prepare(`
+                INSERT INTO team
+                (
+                    name,
+                    designation,
+                    bio,
+                    photo
+                )
+                VALUES (?, ?, ?, ?)
+            `).run(
+                data.name || '',
+                data.designation || '',
+                data.bio || '',
+                data.photo || ''
+            );
+
+        res.json({
+            ok: true,
+            id: result.lastInsertRowid
+        });
+    }
+);
+
+app.put(
+    '/api/team/:id',
+    requireAdmin,
+    (req, res) => {
+
+        const data =
+            req.body || {};
+
+        db.prepare(`
+            UPDATE team
+            SET
+                name = ?,
+                designation = ?,
+                bio = ?,
+                photo = ?
+            WHERE id = ?
+        `).run(
+            data.name || '',
+            data.designation || '',
+            data.bio || '',
+            data.photo || '',
+            req.params.id
+        );
+
+        res.json({
+            ok: true
+        });
+    }
+);
+
+app.delete(
+    '/api/team/:id',
+    requireAdmin,
+    (req, res) => {
+
+        db.prepare(
+            'DELETE FROM team WHERE id = ?'
+        ).run(
+            req.params.id
+        );
+
+        res.json({
+            ok: true
+        });
+    }
+);
+
+// ==================================================
+// ADMIN NEWS
+// ==================================================
+
+app.get(
+    '/api/admin/news',
+    requireAdmin,
+    (req, res) => {
+
+        res.json(
+            db.prepare(
+                'SELECT * FROM news ORDER BY date DESC, id DESC'
+            ).all()
+        );
+    }
+);
+
+app.post(
+    '/api/news',
+    requireAdmin,
+    (req, res) => {
+
+        const data =
+            req.body || {};
+
+        const result =
+            db.prepare(`
+                INSERT INTO news
+                (
+                    title_as,
+                    title_en,
+                    date,
+                    category,
+                    author,
+                    image,
+                    body_as,
+                    body_en,
+                    published
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `).run(
+                data.title_as || '',
+                data.title_en || '',
+                data.date || '',
+                data.category || '',
+                data.author || '',
+                data.image || '',
+                data.body_as || '',
+                data.body_en || '',
+                Number(data.published ?? 1)
+            );
+
+        res.json({
+            ok: true,
+            id: result.lastInsertRowid
+        });
+    }
+);
+
+app.put(
+    '/api/news/:id',
+    requireAdmin,
+    (req, res) => {
+
+        const data =
+            req.body || {};
+
+        db.prepare(`
+            UPDATE news
+            SET
+                title_as = ?,
+                title_en = ?,
+                date = ?,
+                category = ?,
+                author = ?,
+                image = ?,
+                body_as = ?,
+                body_en = ?,
+                published = ?
+            WHERE id = ?
+        `).run(
+            data.title_as || '',
+            data.title_en || '',
+            data.date || '',
+            data.category || '',
+            data.author || '',
+            data.image || '',
+            data.body_as || '',
+            data.body_en || '',
+            Number(data.published ?? 1),
+            req.params.id
+        );
+
+        res.json({
+            ok: true
+        });
+    }
+);
+
+app.delete(
+    '/api/news/:id',
+    requireAdmin,
+    (req, res) => {
+
+        db.prepare(
+            'DELETE FROM news WHERE id = ?'
+        ).run(
+            req.params.id
+        );
+
+        res.json({
+            ok: true
+        });
+    }
+);
+
+// ==================================================
+// ADMIN MEMBERSHIPS
+// ==================================================
+
+app.get(
+    '/api/admin/memberships',
+    requireAdmin,
+    (req, res) => {
+
+        res.json(
+            db.prepare(`
+                SELECT *
+                FROM memberships
+                ORDER BY id DESC
+            `).all()
+        );
+    }
+);
+
+app.delete(
+    '/api/memberships/:id',
+    requireAdmin,
+    (req, res) => {
+
+        db.prepare(
+            'DELETE FROM memberships WHERE id = ?'
+        ).run(
+            req.params.id
+        );
+
+        res.json({
+            ok: true
+        });
+    }
+);
+
+// ==================================================
+// FEATURED PERFORMANCES - ADMIN
+// IMPORTANT: THESE ROUTES COME BEFORE ANY GENERIC
+// ADMIN TYPE ROUTES.
+// ==================================================
+
+app.get(
+    '/api/admin/performances',
+    requireAdmin,
+    (req, res) => {
+
+        const performances =
+            db.prepare(`
+                SELECT *
+                FROM performances
+                ORDER BY sort_order ASC, id ASC
+            `).all();
+
+        const getPhotos =
+            db.prepare(`
+                SELECT *
+                FROM performance_photos
+                WHERE performance_id = ?
+                ORDER BY sort_order ASC, id ASC
+            `);
+
+        const result =
+            performances.map(
+                performance => {
+
+                    return {
+                        ...performance,
+                        photos:
+                            getPhotos.all(
+                                performance.id
+                            )
+                    };
+                }
+            );
+
+        res.json(result);
+    }
+);
+
+// ADD PERFORMANCE
+
+app.post(
+    '/api/admin/performances',
+    requireAdmin,
+    (req, res) => {
+
+        const {
+            title,
+            description,
+            sort_order
+        } = req.body || {};
+
+        if (!title || !title.trim()) {
 
             return res.status(400).json({
                 error:
-                    'Invalid type'
+                    'Performance title is required.'
             });
         }
 
+        const result =
+            db.prepare(`
+                INSERT INTO performances
+                (
+                    title,
+                    description,
+                    sort_order
+                )
+                VALUES (?, ?, ?)
+            `).run(
+                title.trim(),
+                description || '',
+                Number(
+                    sort_order || 0
+                )
+            );
+
+        res.json({
+            ok: true,
+            id: result.lastInsertRowid
+        });
+    }
+);
+
+// EDIT PERFORMANCE
+
+app.put(
+    '/api/admin/performances/:id',
+    requireAdmin,
+    (req, res) => {
+
+        const {
+            title,
+            description,
+            sort_order
+        } = req.body || {};
+
+        if (!title || !title.trim()) {
+
+            return res.status(400).json({
+                error:
+                    'Performance title is required.'
+            });
+        }
+
+        const result =
+            db.prepare(`
+                UPDATE performances
+                SET
+                    title = ?,
+                    description = ?,
+                    sort_order = ?
+                WHERE id = ?
+            `).run(
+                title.trim(),
+                description || '',
+                Number(
+                    sort_order || 0
+                ),
+                req.params.id
+            );
+
+        if (result.changes === 0) {
+
+            return res.status(404).json({
+                error:
+                    'Performance not found.'
+            });
+        }
+
+        res.json({
+            ok: true
+        });
+    }
+);
+
+// DELETE PERFORMANCE
+
+app.delete(
+    '/api/admin/performances/:id',
+    requireAdmin,
+    (req, res) => {
+
+        const performanceId =
+            req.params.id;
+
+        const transaction =
+            db.transaction(() => {
+
+                db.prepare(`
+                    DELETE FROM performance_photos
+                    WHERE performance_id = ?
+                `).run(
+                    performanceId
+                );
+
+                db.prepare(`
+                    DELETE FROM performances
+                    WHERE id = ?
+                `).run(
+                    performanceId
+                );
+            });
+
+        transaction();
+
+        res.json({
+            ok: true
+        });
+    }
+);
+
+// ADD PHOTOS TO PERFORMANCE
+
+app.post(
+    '/api/admin/performances/:id/photos',
+    requireAdmin,
+    (req, res) => {
+
+        const {
+            image,
+            caption,
+            sort_order
+        } = req.body || {};
+
+        if (!image) {
+
+            return res.status(400).json({
+                error:
+                    'Image is required.'
+            });
+        }
+
+        const performance =
+            db.prepare(`
+                SELECT id
+                FROM performances
+                WHERE id = ?
+            `).get(
+                req.params.id
+            );
+
+        if (!performance) {
+
+            return res.status(404).json({
+                error:
+                    'Performance not found.'
+            });
+        }
+
+        const result =
+            db.prepare(`
+                INSERT INTO performance_photos
+                (
+                    performance_id,
+                    image,
+                    caption,
+                    sort_order
+                )
+                VALUES (?, ?, ?, ?)
+            `).run(
+                req.params.id,
+                image,
+                caption || '',
+                Number(
+                    sort_order || 0
+                )
+            );
+
+        res.json({
+            ok: true,
+            id: result.lastInsertRowid
+        });
+    }
+);
+
+// EDIT PERFORMANCE PHOTO
+
+app.put(
+    '/api/admin/performance-photos/:id',
+    requireAdmin,
+    (req, res) => {
+
+        const {
+            image,
+            caption,
+            sort_order
+        } = req.body || {};
+
         db.prepare(`
-            DELETE FROM
-                ${req.params.type}
+            UPDATE performance_photos
+            SET
+                image = ?,
+                caption = ?,
+                sort_order = ?
+            WHERE id = ?
+        `).run(
+            image || '',
+            caption || '',
+            Number(
+                sort_order || 0
+            ),
+            req.params.id
+        );
+
+        res.json({
+            ok: true
+        });
+    }
+);
+
+// DELETE PERFORMANCE PHOTO
+
+app.delete(
+    '/api/admin/performance-photos/:id',
+    requireAdmin,
+    (req, res) => {
+
+        db.prepare(`
+            DELETE FROM performance_photos
             WHERE id = ?
         `).run(
             req.params.id
@@ -1511,61 +1432,67 @@ app.delete(
     }
 );
 
-// --------------------------------------------------
-// ERROR HANDLER
-// --------------------------------------------------
+// ==================================================
+// IMAGE UPLOAD
+// ==================================================
 
-app.use(
-    (
-        error,
-        req,
-        res,
-        next
-    ) => {
+app.post(
+    '/api/upload',
+    requireAdmin,
+    upload.single('image'),
+    (req, res) => {
 
-        console.error(error);
-
-        if (
-            error instanceof
-            multer.MulterError
-        ) {
+        if (!req.file) {
 
             return res.status(400).json({
                 error:
-                    error.message
+                    'No image uploaded.'
             });
         }
 
-        if (
-            error &&
-            error.message ===
-            'Only image files are allowed'
-        ) {
+        const imageUrl =
+            `/uploads/${req.file.filename}`;
 
-            return res.status(400).json({
-                error:
-                    'Only image files are allowed'
-            });
-        }
-
-        res.status(500).json({
-            error:
-                'Internal server error'
+        res.json({
+            ok: true,
+            url: imageUrl,
+            filename:
+                req.file.filename
         });
     }
 );
 
-// --------------------------------------------------
+// ==================================================
+// ERROR HANDLER
+// ==================================================
+
+app.use(
+    (error, req, res, next) => {
+
+        console.error(
+            error
+        );
+
+        res.status(500).json({
+            error:
+                error.message ||
+                'Server error'
+        });
+    }
+);
+
+// ==================================================
 // START SERVER
-// --------------------------------------------------
+// ==================================================
 
 app.listen(
     PORT,
-    '0.0.0.0',
+    HOST,
     () => {
 
         console.log(
-            `Sanmilita Yuvak Sangha server running on port ${PORT}`
+            `Sanmilita Yuvak Sangha server running on ${HOST}:${PORT}`
         );
+
     }
 );
